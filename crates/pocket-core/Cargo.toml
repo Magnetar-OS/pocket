@@ -1,0 +1,52 @@
+[package]
+name = "pocket-core"
+version = "1.0.0"
+edition = "2024"
+# MPL-2.0, not GPL: this crate is shaped to graduate into the cosmic-pim
+# substrate. See the note in the workspace manifest and LICENSING.md.
+license = "MPL-2.0"
+description = "The pass model, the PKPass reader, and the pass store"
+repository = "https://github.com/Magnetar-OS/pocket"
+rust-version = "1.98.1"
+readme = "README.md"
+keywords = ["pkpass", "passkit", "wallet", "barcode", "cosmic"]
+categories = ["parser-implementations", "encoding"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+sha1 = "0.11.0"
+
+# The ZXing port, for the four symbologies PassKit defines. All four are
+# needed and no crate covers Aztec but this one, so a single well-worn
+# dependency beats stitching four encoders together and writing the fourth.
+# Default features off: this is an encoder, not a scanner, and the image,
+# SVG and decoder halves are dead weight in a wallet. `encoding_rs` is not
+# optional — the crate refuses to build without a character-set backend, and
+# a character set is the whole point of `messageEncoding`.
+[dependencies.rxing]
+version = "0.9.2"
+default-features = false
+features = ["encoders", "encoding_rs", "aztec", "qrcode", "pdf417", "oned"]
+
+[dev-dependencies]
+tempfile = "3"
+# The end-to-end test builds a `.pkpass` and hashes its manifest, so it needs
+# the same two the reader uses.
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+sha1 = "0.11.0"
+
+# The decoder, for tests only. A barcode test that asserts on module counts
+# proves nothing a reader cares about; one that scans the symbol back and
+# compares the string is the same check the gate performs. It is a
+# dev-dependency so the shipped binary carries no scanner.
+[dev-dependencies.rxing]
+version = "0.9.2"
+default-features = false
+features = ["decoders", "encoders", "encoding_rs", "aztec", "qrcode", "pdf417", "oned"]
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

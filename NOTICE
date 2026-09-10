@@ -1,0 +1,14 @@
+Pocket
+Copyright (c) 2026 Dominikos Pritis and contributors
+
+This product includes software developed as part of the Magnetar COSMIC
+application family.
+
+The binary distributed from this repository statically links
+crates/pocket-core, which is licensed under the Mozilla Public License 2.0
+(Exhibit A only). Its terms are reproduced in LICENSE.MPL-2.0.
+
+Pocket reads Apple's PKPass format. It contains no code from Apple Inc. and
+carries no Apple certificate. "Apple", "Apple Wallet", "PassKit" and "Apple
+Pay" are trademarks of Apple Inc., used here only to identify the format this
+software reads and the behaviour it does not implement.

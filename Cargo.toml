@@ -1,0 +1,82 @@
+# The workspace. Two members, and the split is the same one the rest of the
+# suite makes: a crate with no toolkit dependency that knows what a pass *is*,
+# and a COSMIC front end over it.
+#
+# `pocket-core` is deliberately MPL-2.0 while the application is
+# GPL-3.0-only. It is expected to graduate into the cosmic-pim substrate as
+# `cosmic-pim-pass` once a second application wants it — Envelope showing an
+# "Add to wallet" affordance on a `.pkpass` attachment is the trigger — and the
+# substrate is MPL-2.0. Licensing it that way now makes that move a `git mv`
+# rather than a relicensing conversation. See LICENSING.md.
+[workspace]
+members = ["crates/pocket-core"]
+resolver = "3"
+
+[package]
+name = "pocket"
+version = "1.0.0"
+edition = "2024"
+# GPL-3.0-only for the application; `pocket-core` and the shared substrate
+# (cosmic-pim) are MPL-2.0 and are linked, not absorbed. See LICENSING.md.
+license = "GPL-3.0-only"
+description = "Pocket — passes, tickets and cards for the COSMIC desktop"
+repository = "https://github.com/Magnetar-OS/pocket"
+rust-version = "1.98.1"
+# Not a crates.io artefact: the short name there belongs to an unrelated crate,
+# and the application ships through Magnetar packaging. `pocket-core` is the
+# published half. See LICENSING.md.
+publish = false
+
+[build-dependencies]
+# Generates the desktop entry and AppStream metainfo from `resources/*` plus the
+# Fluent catalogues, so the app's name and summary are translated in the
+# applications menu and the software centre too. See build.rs.
+xdgen = "0.1"
+
+[dependencies]
+pocket-core = { path = "crates/pocket-core", version = "1.0.0" }
+
+i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester"] }
+i18n-embed-fl = "0.10"
+rust-embed = "8.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+open = "5.4.3"
+
+# The XDG portal, for inhibiting idle while a barcode is on screen. Already in
+# the graph through libcosmic's `xdg-portal` feature; naming it here is what
+# makes `ashpd::desktop::inhibit` reachable. The portal rather than a Wayland
+# protocol or a compositor bus name, because it is the one interface that also
+# works from inside a Flatpak.
+ashpd = "0.12.3"
+# For `com.system76.CosmicSettingsDaemon`, which owns the backlight on this
+# desktop. Also already in the graph via libcosmic. The proxy is three lines in
+# `src/screen.rs` rather than a dependency on the bindings crate, which does
+# not carry the `MaxDisplayBrightness` property the presenter needs.
+zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
+
+[dependencies.libcosmic]
+git = "https://github.com/pop-os/libcosmic.git"
+features = [
+    # About widget for the app.
+    "about",
+    # Focuses the running instance rather than opening a second window, and is
+    # what will carry a `.pkpass` path handed over by a file manager.
+    "single-instance",
+    # GPU-accelerated rendering.
+    "wgpu",
+    # Native file dialogs, for importing a `.pkpass` or a PDF ticket.
+    "xdg-portal",
+]
+
+[[bin]]
+name = "pocket"
+path = "src/main.rs"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

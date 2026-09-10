@@ -1,0 +1,19 @@
+[Desktop Entry]
+Name=Pocket
+GenericName=Wallet
+Comment=Boarding passes, tickets and cards, with their barcodes ready to scan
+Categories=COSMIC;Utility;
+Exec=pocket %U
+Icon=com.magnetaros.Pocket
+Terminal=false
+Type=Application
+StartupNotify=true
+StartupWMClass=com.magnetaros.Pocket
+MimeType=application/vnd.apple.pkpass;
+Keywords=wallet;pass;passes;pkpass;boarding;ticket;barcode;loyalty;card;coupon;
+# Deliberately NOT DBusActivatable, for the reason spelled out in Slate's and
+# Circle's desktop entries: libcosmic's run_single_instance claims the bus name
+# but serves org.freedesktop.DbusActivation rather than the
+# org.freedesktop.Application the freedesktop spec requires, so GIO's call fails
+# silently and opening a .pkpass from a file manager would do nothing at all.
+# The Exec line reaches the same place.

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.magnetaros.Pocket</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Pocket</name>
+  <summary>Boarding passes, tickets and cards, with their barcodes ready to scan</summary>
+  <developer id="com.magnetaros">
+    <name>entro314 labs</name>
+  </developer>
+  <description>
+    <p>
+      Pocket is the wallet for the COSMIC desktop. It holds boarding passes,
+      event tickets, loyalty and membership cards, and coupons, and presents
+      their barcodes full-screen and at full contrast so a reader can scan them
+      off the display.
+    </p>
+    <p>
+      Passes are kept as the .pkpass files they arrived in, byte for byte. A
+      pass is signed over its own bytes, so anything that rewrites one destroys
+      the signature; Pocket reads the file on every load rather than
+      normalising it into a database.
+    </p>
+    <p>
+      It stores no secrets of its own. Card numbers and issuer update tokens go
+      to the system keyring over the Secret Service, which on this desktop is
+      Locket, so there is one vault on the machine rather than two.
+    </p>
+  </description>
+  <icon type="remote" width="64" height="64" scale="1">
+    https://github.com/Magnetar-OS/pocket/raw/main/resources/icons/hicolor/scalable/apps/com.magnetaros.Pocket.svg
+  </icon>
+  <url type="homepage">https://github.com/Magnetar-OS/pocket</url>
+  <url type="bugtracker">https://github.com/Magnetar-OS/pocket/issues</url>
+  <url type="vcs-browser">https://github.com/Magnetar-OS/pocket</url>
+  <launchable type="desktop-id">com.magnetaros.Pocket.desktop</launchable>
+  <provides>
+    <!-- How an application says it belongs to COSMIC. The desktop's own store
+         and app library filter on this id. -->
+    <id>com.system76.CosmicApplication</id>
+    <binary>pocket</binary>
+  </provides>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>wallet</keyword>
+    <keyword>boarding pass</keyword>
+    <keyword>ticket</keyword>
+  </keywords>
+  <content_rating type="oars-1.1" />
+  <!-- The rose of the app icon; software centres tint the page header with it. -->
+  <branding>
+    <color type="primary" scheme_preference="light">#ff6fa8</color>
+    <color type="primary" scheme_preference="dark">#c9286e</color>
+  </branding>
+  <releases>
+    <release version="0.1.0" date="2026-09-09">
+      <description>
+        <p>First scaffold.</p>
+      </description>
+    </release>
+  </releases>
+</component>
