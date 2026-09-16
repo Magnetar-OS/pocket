@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-16
+
 ### Added
 
 - Packages. Pocket is built as a `.deb`, `.rpm` and Arch package on every
@@ -50,4 +52,6 @@ a pass on screen whose barcode a reader can scan.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 
+[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/Magnetar-OS/pocket/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Magnetar-OS/pocket/releases/tag/v1.0.0
