@@ -4,6 +4,15 @@ All notable changes to Pocket are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Packages. Pocket is built as a `.deb`, `.rpm` and Arch package on every
+  release and published to the `[magnetar]` pacman repository. v1.0.0 was
+  tagged without a release pipeline, so this is the first version anyone can
+  install without building it.
+
 ## [1.0.0] — 2026-09-10
 
 First release. The pass pipeline works end to end: a `.pkpass` on disk becomes
