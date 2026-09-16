@@ -19,7 +19,8 @@ use crate::screen::{self, Hold};
 
 const APP_ID: &str = "com.magnetaros.Pocket";
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
-const APP_ICON: &[u8] = include_bytes!("../resources/icons/hicolor/scalable/apps/com.magnetaros.Pocket.svg");
+const APP_ICON: &[u8] =
+    include_bytes!("../resources/icons/hicolor/scalable/apps/com.magnetaros.Pocket.svg");
 
 /// What a sidebar row filters the list to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
