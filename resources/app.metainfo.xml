@@ -63,7 +63,7 @@
     <color type="primary" scheme_preference="dark">#c9286e</color>
   </branding>
   <releases>
-    <release version="1.0.2" date="2026-09-16"> <!-- x-release-kit-version-date -->
+    <release version="1.1.0" date="2026-09-22"> <!-- x-release-kit-version-date -->
       <description>
         <p>First scaffold.</p>
       </description>

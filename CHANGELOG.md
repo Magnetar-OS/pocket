@@ -6,6 +6,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-22
+
+### Dependencies
+
+- **deps:** update accesskit and related packages to specific revisions ([c6f80a3](https://github.com/Magnetar-OS/pocket/commit/c6f80a3))
+
 ## [1.0.2] - 2026-09-16
 
 ### Fixed
@@ -60,7 +66,8 @@ a pass on screen whose barcode a reader can scan.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 
-[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Magnetar-OS/pocket/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/Magnetar-OS/pocket/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/Magnetar-OS/pocket/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/Magnetar-OS/pocket/releases/tag/v1.0.0

@@ -14,7 +14,7 @@ resolver = "3"
 
 [package]
 name = "pocket"
-version = "1.0.2"
+version = "1.1.0"
 edition = "2024"
 # GPL-3.0-only for the application; `pocket-core` and the shared substrate
 # (cosmic-pim) are MPL-2.0 and are linked, not absorbed. See LICENSING.md.
