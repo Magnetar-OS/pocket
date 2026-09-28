@@ -25,6 +25,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the other passes load.
 - A pass folder without its `pass.pkpass`, or a `.pkpass` saved loose in the
   passes folder, is counted as unreadable instead of silently left out.
+- Each pass that could not be read is listed by its folder name with the
+  reason, under the count. Only the count was shown, so there was no telling
+  which boarding pass was broken.
 
 ## [1.1.0] - 2026-09-22
 

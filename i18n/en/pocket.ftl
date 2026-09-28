@@ -38,6 +38,8 @@ unreadable-passes = { $count } { $count ->
         [one] pass could not be read
        *[other] passes could not be read
     }
+# One line per pass that would not read: its folder name, then why.
+unreadable-pass = { $id }: { $reason }
 back-of-pass = Back of pass
 
 ## The barcode

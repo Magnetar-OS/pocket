@@ -134,6 +134,21 @@ impl AppModel {
         widget::scrollable(column).height(Length::Fill).into()
     }
 
+    /// One line per pass that would not read: which one, and why. A count
+    /// alone does not say *which* boarding pass is broken.
+    fn unreadable_lines(&self) -> Vec<String> {
+        self.unreadable
+            .iter()
+            .map(|failure| {
+                fl!(
+                    "unreadable-pass",
+                    id = failure.id.clone(),
+                    reason = failure.reason.clone()
+                )
+            })
+            .collect()
+    }
+
     fn detail(&self) -> Element<'_, Message> {
         let Some(pass) = self.selected_pass() else {
             return widget::text::body(fl!("select-a-pass")).into();
@@ -346,6 +361,9 @@ impl cosmic::Application for AppModel {
                 "unreadable-passes",
                 count = self.unreadable.len()
             )));
+            for line in self.unreadable_lines() {
+                left = left.push(widget::text::caption(line));
+            }
         }
         left = left.push(self.list());
 
@@ -454,5 +472,19 @@ mod tests {
         let _ = app.update(Message::ScreenHeld(Hold::owing(40)));
         let _ = app.update(Message::ScreenHeld(Hold::default()));
         assert_eq!(app.hold.owed_brightness(), Some(40));
+    }
+
+    /// A pass that will not read is listed by its folder and the reason, not
+    /// only counted.
+    #[test]
+    fn an_unreadable_pass_is_named_with_its_reason() {
+        let mut app = app();
+        app.unreadable.push(UnreadablePass {
+            id: "flight-to-lhr".to_owned(),
+            reason: "not a zip archive".to_owned(),
+        });
+        let lines = app.unreadable_lines();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("flight-to-lhr") && lines[0].contains("not a zip archive"));
     }
 }
