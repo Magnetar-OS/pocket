@@ -34,6 +34,28 @@ use std::io::{Cursor, Read};
 /// Files the manifest does not cover, by PassKit's own rule.
 const UNMANIFESTED: [&str; 2] = ["manifest.json", "signature"];
 
+/// The most entries an archive may hold.
+///
+/// A pass is `pass.json`, the manifest, the signature, a dozen images at
+/// three scales, and optionally a `.lproj` folder of strings and images per
+/// language. A thousand covers every language PassKit localises into, many
+/// times over.
+pub(crate) const MAX_ENTRIES: usize = 1024;
+
+/// The most one entry may hold once decompressed: 16 MiB.
+///
+/// The largest thing in a real pass is a `@3x` background or strip image, a
+/// few hundred kilobytes to a megabyte or two.
+pub(crate) const MAX_ENTRY_BYTES: u64 = 16 * 1024 * 1024;
+
+/// The most a whole archive may hold, compressed or decompressed: 64 MiB.
+///
+/// Real passes are kilobytes to a few megabytes. The limit exists so that a
+/// hostile or broken archive — a deflate bomb, or a header claiming an
+/// exabyte — is refused as one unreadable pass instead of exhausting memory
+/// and taking every other pass in the wallet down with the process.
+pub(crate) const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("not a zip archive: {0}")]
@@ -72,8 +94,7 @@ pub enum Error {
 /// `manifest.json` is missing or malformed, or when the manifest does not
 /// describe the archive exactly.
 pub fn read(bytes: &[u8]) -> Result<Pass, Error> {
-    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
-    let files = read_all(&mut archive)?;
+    let files = read_all(bytes)?;
     verify_manifest(&files)?;
 
     let raw = files
@@ -101,9 +122,10 @@ pub fn read(bytes: &[u8]) -> Result<Pass, Error> {
 /// Returns [`Error`] when the archive will not open or `pass.json` is
 /// missing or malformed.
 pub fn authentication_token(bytes: &[u8]) -> Result<Option<String>, Error> {
-    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
-    let raw = read_one(&mut archive, "pass.json")?.ok_or(Error::Missing("pass.json"))?;
-    let json: serde_json::Value = serde_json::from_slice(&raw).map_err(|source| Error::Json {
+    // The same reader as `read`, so the same limits hold.
+    let files = read_all(bytes)?;
+    let raw = files.get("pass.json").ok_or(Error::Missing("pass.json"))?;
+    let json: serde_json::Value = serde_json::from_slice(raw).map_err(|source| Error::Json {
         file: "pass.json".to_owned(),
         source,
     })?;
@@ -113,45 +135,83 @@ pub fn authentication_token(bytes: &[u8]) -> Result<Option<String>, Error> {
         .map(ToOwned::to_owned))
 }
 
-fn read_all(
-    archive: &mut zip::ZipArchive<Cursor<&[u8]>>,
-) -> Result<BTreeMap<String, Vec<u8>>, Error> {
+/// A limit an archive broke, as the [`Error::Read`] it is reported as.
+fn refused(file: &str, why: String) -> Error {
+    Error::Read {
+        file: file.to_owned(),
+        source: std::io::Error::new(std::io::ErrorKind::FileTooLarge, why),
+    }
+}
+
+/// Every file in the archive, by name, within the limits above.
+///
+/// Nothing the archive *says* about itself is trusted for sizing: the
+/// declared uncompressed size decides only whether an entry is refused
+/// outright, never how much is allocated, and every read is cut off one byte
+/// past what is left of the budget, so an entry that lies about its size is
+/// caught by what it actually produces.
+fn read_all(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, Error> {
+    if bytes.len() as u64 > MAX_ARCHIVE_BYTES {
+        return Err(refused(
+            "the archive",
+            format!("it is larger than {} MiB", MAX_ARCHIVE_BYTES >> 20),
+        ));
+    }
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes))?;
+    if archive.len() > MAX_ENTRIES {
+        return Err(refused(
+            "the archive",
+            format!("it holds {} files, more than {MAX_ENTRIES}", archive.len()),
+        ));
+    }
+
     let mut files = BTreeMap::new();
+    let mut budget = MAX_ARCHIVE_BYTES;
     for index in 0..archive.len() {
-        let mut entry = archive.by_index(index)?;
+        let entry = archive.by_index(index)?;
         if entry.is_dir() {
             continue;
         }
         let name = entry.name().to_owned();
-        let mut buffer = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or(0));
+        let limit = MAX_ENTRY_BYTES.min(budget);
+        if entry.size() > limit {
+            return Err(too_large(&name, limit));
+        }
+        let mut buffer = Vec::new();
         entry
+            .take(limit + 1)
             .read_to_end(&mut buffer)
             .map_err(|source| Error::Read {
                 file: name.clone(),
                 source,
             })?;
+        let read = buffer.len() as u64;
+        if read > limit {
+            return Err(too_large(&name, limit));
+        }
+        budget -= read;
         files.insert(name, buffer);
     }
     Ok(files)
 }
 
-fn read_one(
-    archive: &mut zip::ZipArchive<Cursor<&[u8]>>,
-    name: &str,
-) -> Result<Option<Vec<u8>>, Error> {
-    let mut entry = match archive.by_name(name) {
-        Ok(entry) => entry,
-        Err(zip::result::ZipError::FileNotFound) => return Ok(None),
-        Err(why) => return Err(why.into()),
-    };
-    let mut buffer = Vec::new();
-    entry
-        .read_to_end(&mut buffer)
-        .map_err(|source| Error::Read {
-            file: name.to_owned(),
-            source,
-        })?;
-    Ok(Some(buffer))
+/// The error for an entry past `limit`: the per-file limit, or what is left
+/// of the archive's.
+fn too_large(name: &str, limit: u64) -> Error {
+    if limit == MAX_ENTRY_BYTES {
+        refused(
+            name,
+            format!("it is larger than {} MiB", MAX_ENTRY_BYTES >> 20),
+        )
+    } else {
+        refused(
+            name,
+            format!(
+                "the archive decompresses to more than {} MiB",
+                MAX_ARCHIVE_BYTES >> 20
+            ),
+        )
+    }
 }
 
 /// Checks the manifest against the archive in both directions.
@@ -314,7 +374,7 @@ fn date(json: &serde_json::Value, key: &str) -> Option<DateTime<FixedOffset>> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::model::TransitType;
     use std::io::Write;
@@ -322,7 +382,7 @@ mod tests {
 
     /// Builds a `.pkpass` in memory with a correct manifest, so the tests
     /// exercise the real verification path rather than skipping it.
-    fn pkpass(files: &[(&str, &[u8])]) -> Vec<u8> {
+    pub(crate) fn pkpass(files: &[(&str, &[u8])]) -> Vec<u8> {
         let mut manifest = serde_json::Map::new();
         for (name, content) in files {
             manifest.insert(
@@ -347,7 +407,7 @@ mod tests {
         buffer
     }
 
-    const BOARDING: &str = r#"{
+    pub(crate) const BOARDING: &str = r#"{
         "formatVersion": 1,
         "passTypeIdentifier": "pass.com.example.air",
         "serialNumber": "ABC123",
@@ -424,8 +484,7 @@ mod tests {
         let mut bytes = pkpass(&[("pass.json", BOARDING.as_bytes())]);
         // Rewrite the archive with the same manifest but different content.
         let doctored = BOARDING.replace("Example Air", "Somebody Else");
-        let mut archive = zip::ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap();
-        let manifest = read_one(&mut archive, "manifest.json").unwrap().unwrap();
+        let manifest = read_all(&bytes).unwrap().remove("manifest.json").unwrap();
         bytes = {
             let mut buffer = Vec::new();
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buffer));
@@ -448,8 +507,7 @@ mod tests {
     fn a_file_appended_after_signing_is_rejected() {
         let mut buffer = Vec::new();
         let signed = pkpass(&[("pass.json", BOARDING.as_bytes())]);
-        let mut archive = zip::ZipArchive::new(Cursor::new(signed.as_slice())).unwrap();
-        let manifest = read_one(&mut archive, "manifest.json").unwrap().unwrap();
+        let manifest = read_all(&signed).unwrap().remove("manifest.json").unwrap();
         {
             let mut zip = zip::ZipWriter::new(Cursor::new(&mut buffer));
             let options = SimpleFileOptions::default();
@@ -505,5 +563,122 @@ mod tests {
         let pass = read(&bytes).unwrap();
         assert_eq!(pass.kind, PassKind::StoreCard);
         assert_eq!(pass.barcode().unwrap().format, crate::BarcodeFormat::Qr);
+    }
+
+    /// A zip with one stored entry whose zip64 header claims `claimed`
+    /// bytes, whatever it really holds. Written by hand because no zip writer
+    /// will produce a header that lies.
+    pub(crate) fn lying_archive(name: &str, content: &[u8], claimed: u64) -> Vec<u8> {
+        fn crc32(bytes: &[u8]) -> u32 {
+            let mut crc = !0u32;
+            for byte in bytes {
+                crc ^= u32::from(*byte);
+                for _ in 0..8 {
+                    crc = if crc & 1 == 1 {
+                        (crc >> 1) ^ 0xEDB8_8320
+                    } else {
+                        crc >> 1
+                    };
+                }
+            }
+            !crc
+        }
+        let name_len = u16::try_from(name.len()).unwrap();
+        let size = content.len() as u64;
+        // The zip64 extra field: uncompressed size, then compressed size.
+        let mut extra = Vec::new();
+        extra.extend_from_slice(&1u16.to_le_bytes());
+        extra.extend_from_slice(&16u16.to_le_bytes());
+        extra.extend_from_slice(&claimed.to_le_bytes());
+        extra.extend_from_slice(&size.to_le_bytes());
+
+        let mut out = Vec::new();
+        // Local file header.
+        out.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+        out.extend_from_slice(&45u16.to_le_bytes()); // version needed: zip64
+        out.extend_from_slice(&[0; 6]); // flags, method (stored), time
+        out.extend_from_slice(&0u16.to_le_bytes()); // date
+        out.extend_from_slice(&crc32(content).to_le_bytes());
+        out.extend_from_slice(&u32::MAX.to_le_bytes()); // compressed: see zip64
+        out.extend_from_slice(&u32::MAX.to_le_bytes()); // uncompressed: see zip64
+        out.extend_from_slice(&name_len.to_le_bytes());
+        out.extend_from_slice(&20u16.to_le_bytes());
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(&extra);
+        out.extend_from_slice(content);
+
+        let central = out.len();
+        out.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+        out.extend_from_slice(&45u16.to_le_bytes()); // made by
+        out.extend_from_slice(&45u16.to_le_bytes()); // needed
+        out.extend_from_slice(&[0; 8]); // flags, method, time, date
+        out.extend_from_slice(&crc32(content).to_le_bytes());
+        out.extend_from_slice(&u32::MAX.to_le_bytes());
+        out.extend_from_slice(&u32::MAX.to_le_bytes());
+        out.extend_from_slice(&name_len.to_le_bytes());
+        out.extend_from_slice(&20u16.to_le_bytes()); // extra length
+        out.extend_from_slice(&[0; 10]); // comment, disk, attributes
+        out.extend_from_slice(&0u32.to_le_bytes()); // local header offset
+        out.extend_from_slice(name.as_bytes());
+        out.extend_from_slice(&extra);
+        let central_len = out.len() - central;
+
+        // End of central directory.
+        out.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+        out.extend_from_slice(&[0; 4]); // disk numbers
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&u32::try_from(central_len).unwrap().to_le_bytes());
+        out.extend_from_slice(&u32::try_from(central).unwrap().to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out
+    }
+
+    fn is_refused(result: &Result<Pass, Error>) -> bool {
+        matches!(
+            result,
+            Err(Error::Read { source, .. }) if source.kind() == std::io::ErrorKind::FileTooLarge
+        )
+    }
+
+    /// A header claiming a terabyte is refused on the claim. Sizing a buffer
+    /// from it aborted the process ("memory allocation of 1099511627776 bytes
+    /// failed"), and the whole wallet with it.
+    #[test]
+    fn an_entry_claiming_an_enormous_size_is_refused_not_allocated() {
+        let bytes = lying_archive("pass.json", b"{}", 1 << 40);
+        assert!(is_refused(&read(&bytes)), "{:?}", read(&bytes));
+    }
+
+    /// A deflate bomb: kilobytes on disk, more than a pass may hold once
+    /// inflated. Cut off at the limit rather than inflated in full.
+    #[test]
+    fn an_entry_that_inflates_past_the_limit_is_refused() {
+        let zeros = vec![0u8; usize::try_from(MAX_ENTRY_BYTES).unwrap() + 1];
+        let bytes = pkpass(&[("pass.json", BOARDING.as_bytes()), ("strip.png", &zeros)]);
+        assert!(
+            bytes.len() < 1024 * 1024,
+            "the bomb should be small on disk"
+        );
+        assert!(is_refused(&read(&bytes)));
+    }
+
+    /// Files each under the per-file limit that together inflate past the
+    /// archive's.
+    #[test]
+    fn an_archive_that_inflates_past_its_total_is_refused() {
+        let chunk = vec![0u8; usize::try_from(MAX_ENTRY_BYTES).unwrap()];
+        let names = ["a.png", "b.png", "c.png", "d.png", "e.png"];
+        let mut files: Vec<(&str, &[u8])> = vec![("pass.json", BOARDING.as_bytes())];
+        files.extend(names.iter().map(|name| (*name, chunk.as_slice())));
+        assert!(is_refused(&read(&pkpass(&files))));
+    }
+
+    #[test]
+    fn an_archive_with_too_many_files_is_refused() {
+        let names: Vec<String> = (0..=MAX_ENTRIES).map(|i| format!("{i}.png")).collect();
+        let mut files: Vec<(&str, &[u8])> = vec![("pass.json", BOARDING.as_bytes())];
+        files.extend(names.iter().map(|name| (name.as_str(), b"x".as_slice())));
+        assert!(is_refused(&read(&pkpass(&files))));
     }
 }

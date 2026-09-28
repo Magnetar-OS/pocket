@@ -14,6 +14,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Leaving the presenter before the desktop had answered no longer leaves the
   screen at full brightness and kept awake, and presenting again quickly no
   longer loses track of the brightness to restore.
+- One oversized or hostile `.pkpass` — a header claiming a terabyte, or a
+  zip bomb — no longer takes the whole wallet down. It is listed as unreadable
+  and the other passes load.
 
 ## [1.1.0] - 2026-09-22
 

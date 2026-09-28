@@ -149,8 +149,19 @@ impl PassStore {
     /// Reads one pass by id, returning the parse failure as a string when it
     /// will not read.
     fn load(&self, id: &str) -> Result<StoredPass, String> {
+        use std::io::Read as _;
+
         let path = self.root.join(id).join(PASS_FILE);
-        let bytes = std::fs::read(&path).map_err(|why| why.to_string())?;
+        // Read no more than the reader would accept, plus the one byte that
+        // tells it the file is over: a file of any size must not be loaded
+        // whole just to be refused.
+        let mut bytes = Vec::new();
+        std::fs::File::open(&path)
+            .and_then(|file| {
+                file.take(crate::pkpass::MAX_ARCHIVE_BYTES + 1)
+                    .read_to_end(&mut bytes)
+            })
+            .map_err(|why| why.to_string())?;
         let pass = crate::pkpass::read(&bytes).map_err(|why| why.to_string())?;
         Ok(StoredPass {
             id: id.to_owned(),
@@ -214,5 +225,27 @@ mod tests {
         assert!(listing.passes.is_empty());
         assert_eq!(listing.unreadable.len(), 1);
         assert_eq!(listing.unreadable[0].id, "broken");
+    }
+
+    /// A hostile archive — here, one whose header claims a terabyte — is one
+    /// unreadable pass, reported by name; the rest of the wallet still loads.
+    #[test]
+    fn a_hostile_archive_is_one_unreadable_pass_not_an_empty_wallet() {
+        use crate::pkpass::tests::{BOARDING, lying_archive, pkpass};
+
+        let dir = tempfile::tempdir().unwrap();
+        for (id, bytes) in [
+            ("flight", pkpass(&[("pass.json", BOARDING.as_bytes())])),
+            ("hostile", lying_archive("pass.json", b"{}", 1 << 40)),
+        ] {
+            std::fs::create_dir_all(dir.path().join(id)).unwrap();
+            std::fs::write(dir.path().join(id).join(PASS_FILE), bytes).unwrap();
+        }
+
+        let listing = PassStore::open(dir.path()).list().unwrap();
+        assert_eq!(listing.passes.len(), 1);
+        assert_eq!(listing.passes[0].id, "flight");
+        assert_eq!(listing.unreadable.len(), 1);
+        assert_eq!(listing.unreadable[0].id, "hostile");
     }
 }
