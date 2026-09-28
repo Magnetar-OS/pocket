@@ -34,7 +34,7 @@ publish = false
 xdgen = "0.1"
 
 [dependencies]
-pocket-core = { path = "crates/pocket-core", version = "1.0.0" }
+pocket-core = { path = "crates/pocket-core", version = "1.0.1" }
 
 i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester"] }
 i18n-embed-fl = "0.10"

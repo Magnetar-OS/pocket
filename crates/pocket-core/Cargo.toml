@@ -1,6 +1,6 @@
 [package]
 name = "pocket-core"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 # MPL-2.0, not GPL: this crate is shaped to graduate into the cosmic-pim
 # substrate. See the note in the workspace manifest and LICENSING.md.

@@ -7,6 +7,8 @@ application keeps its own changelog at the repository root.
 
 ## [Unreleased]
 
+## [1.0.1]
+
 ### Changed
 
 - `PassStore::list` puts past passes last: upcoming passes first, soonest at
