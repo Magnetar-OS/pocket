@@ -11,6 +11,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Passes whose dates carry no seconds — the form Apple's own examples use,
   such as `2014-12-05T09:00-08:00` — keep their relevant date and expiry. They
   were read as undated, so a boarding pass sorted below the loyalty cards.
+- Leaving the presenter before the desktop had answered no longer leaves the
+  screen at full brightness and kept awake, and presenting again quickly no
+  longer loses track of the brightness to restore.
 
 ## [1.1.0] - 2026-09-22
 

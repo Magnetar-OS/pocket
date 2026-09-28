@@ -380,7 +380,22 @@ impl cosmic::Application for AppModel {
                 }
             }
             Message::Leave => return self.present(false),
-            Message::ScreenHeld(hold) => self.hold = hold,
+            // What the desktop lent arrives asynchronously, so it may arrive
+            // when it is no longer wanted: after the presenter closed, or on
+            // top of what a newer presentation already holds. Only a hold
+            // for the presenter that is up, with nothing held yet, is kept;
+            // anything else is given straight back. A release reports an
+            // empty hold, which is never kept over a real one.
+            Message::ScreenHeld(hold) => {
+                if self.presenting && self.hold.is_empty() {
+                    self.hold = hold;
+                } else if !hold.is_empty() {
+                    return cosmic::task::future(async move {
+                        screen::release(hold).await;
+                        Message::ScreenHeld(Hold::default())
+                    });
+                }
+            }
             Message::ToggleAbout => {
                 self.core.window.show_context = !self.core.window.show_context;
             }
@@ -391,5 +406,53 @@ impl cosmic::Application for AppModel {
             }
         }
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmic::Application as _;
+
+    fn app() -> AppModel {
+        AppModel {
+            core: Core::default(),
+            about: About::default(),
+            nav: nav_bar::Model::default(),
+            passes: Vec::new(),
+            unreadable: Vec::new(),
+            selected: None,
+            symbol: None,
+            presenting: false,
+            hold: Hold::default(),
+            root: String::new(),
+            fatal: None,
+        }
+    }
+
+    /// Present, then Done before the portal and the settings daemon have
+    /// answered: what they lend afterwards has to go straight back, not be
+    /// kept as if a barcode were still on screen.
+    #[test]
+    fn a_hold_that_arrives_after_the_presenter_closed_is_given_back() {
+        let mut app = app();
+        let _ = app.update(Message::ScreenHeld(Hold::owing(40)));
+        assert_eq!(
+            app.hold.owed_brightness(),
+            None,
+            "the raised backlight was kept after the presenter closed"
+        );
+    }
+
+    /// Leave and present again quickly: the first release finishing late must
+    /// not overwrite what the second presentation borrowed, or the backlight
+    /// is never given back.
+    #[test]
+    fn a_release_finishing_late_keeps_the_new_presentations_hold() {
+        let mut app = app();
+        app.presenting = true;
+        let _ = app.update(Message::ScreenHeld(Hold::owing(40)));
+        let _ = app.update(Message::ScreenHeld(Hold::default()));
+        assert_eq!(app.hold.owed_brightness(), Some(40));
     }
 }

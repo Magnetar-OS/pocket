@@ -78,6 +78,12 @@ impl Hold {
     pub const fn owed_brightness(&self) -> Option<i32> {
         self.restore
     }
+
+    /// Whether nothing was borrowed, so nothing is owed.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.idle.is_none() && self.restore.is_none()
+    }
 }
 
 /// Inhibits idling and raises the backlight, returning what to give back.
@@ -177,4 +183,15 @@ async fn set_brightness(value: i32) -> zbus::Result<()> {
         .await?
         .set_display_brightness(value)
         .await
+}
+
+#[cfg(test)]
+impl Hold {
+    /// A hold that owes `brightness` back and nothing else.
+    pub(crate) const fn owing(brightness: i32) -> Self {
+        Self {
+            idle: None,
+            restore: Some(brightness),
+        }
+    }
 }
