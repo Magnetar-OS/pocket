@@ -207,6 +207,10 @@ that could carry one will eventually be serialised somewhere it should not be.
 **An unreadable pass is reported, never dropped.** One corrupt file must not
 quietly shrink the wallet — that failure is discovered at a boarding gate.
 `PassStore::list` returns what loaded *and* what did not.
+That includes a hostile archive: a `.pkpass` is read within limits (1024
+entries, 16 MiB a file, 64 MiB in all, compressed or decompressed), and
+nothing the archive claims about its own size decides an allocation, so a zip
+bomb or a lying header is one unreadable pass rather than a dead process.
 
 **The manifest is checked in both directions.** A file named in the manifest
 but absent is a truncated archive; a file present but unnamed is content
