@@ -120,10 +120,38 @@ impl PassStore {
 
         let mut passes = Vec::new();
         let mut failures = Vec::new();
-        for entry in entries.flatten() {
+        for entry in entries {
+            // Everything in the root is a pass or says why it is not. A pass
+            // the list leaves out without a word is one found missing at the
+            // gate.
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(why) => {
+                    failures.push(UnreadablePass {
+                        id: self.root.display().to_string(),
+                        reason: why.to_string(),
+                    });
+                    continue;
+                }
+            };
             let id = entry.file_name().to_string_lossy().into_owned();
-            let path = entry.path().join(PASS_FILE);
-            if !path.is_file() {
+            // Hidden entries are the file manager's (`.directory`), not
+            // passes.
+            if id.starts_with('.') {
+                continue;
+            }
+            if !entry.path().is_dir() {
+                failures.push(UnreadablePass {
+                    id,
+                    reason: format!("not a pass folder: a pass is kept as <name>/{PASS_FILE}"),
+                });
+                continue;
+            }
+            if !entry.path().join(PASS_FILE).is_file() {
+                failures.push(UnreadablePass {
+                    id,
+                    reason: format!("the folder holds no {PASS_FILE}"),
+                });
                 continue;
             }
             match self.load(&id) {
@@ -247,5 +275,22 @@ mod tests {
         assert_eq!(listing.passes[0].id, "flight");
         assert_eq!(listing.unreadable.len(), 1);
         assert_eq!(listing.unreadable[0].id, "hostile");
+    }
+
+    /// A folder with no `pass.pkpass` in it, or a `.pkpass` dropped loose in
+    /// the root, is reported rather than passed over. Hidden entries are not
+    /// passes and are left alone.
+    #[test]
+    fn what_is_not_a_pass_is_reported_not_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("empty")).unwrap();
+        std::fs::write(dir.path().join("empty").join("ticket.pkpass"), b"").unwrap();
+        std::fs::write(dir.path().join("loose.pkpass"), b"").unwrap();
+        std::fs::write(dir.path().join(".directory"), b"").unwrap();
+
+        let listing = PassStore::open(dir.path()).list().unwrap();
+        let mut ids: Vec<&str> = listing.unreadable.iter().map(|u| u.id.as_str()).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, ["empty", "loose.pkpass"]);
     }
 }

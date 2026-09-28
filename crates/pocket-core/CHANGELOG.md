@@ -18,6 +18,10 @@ application keeps its own changelog at the repository root.
   has kind `FileTooLarge`, and `PassStore::list` reports the pass as
   unreadable instead of dying with it. The store reads a file only up to the
   archive limit.
+- `PassStore::list` reports everything in the store's root that is not a
+  readable pass: a folder without `pass.pkpass`, a file lying loose in the
+  root, and a directory entry that could not be read. They were skipped
+  silently. Hidden entries are still ignored.
 
 ## [1.0.0] - 2026-09-10
 

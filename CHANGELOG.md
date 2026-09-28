@@ -17,6 +17,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - One oversized or hostile `.pkpass` — a header claiming a terabyte, or a
   zip bomb — no longer takes the whole wallet down. It is listed as unreadable
   and the other passes load.
+- A pass folder without its `pass.pkpass`, or a `.pkpass` saved loose in the
+  passes folder, is counted as unreadable instead of silently left out.
 
 ## [1.1.0] - 2026-09-22
 
