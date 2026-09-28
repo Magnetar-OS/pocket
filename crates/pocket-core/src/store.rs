@@ -160,14 +160,9 @@ impl PassStore {
             }
         }
 
-        // Soonest-relevant first, then passes with no date, then by title —
-        // which is the order a wallet is useful in. A pass with no relevant
-        // date is a loyalty card, and it belongs below today's flight.
-        passes.sort_by(|a, b| {
-            (a.pass.relevant_date.is_none(), a.pass.relevant_date)
-                .cmp(&(b.pass.relevant_date.is_none(), b.pass.relevant_date))
-                .then_with(|| a.pass.title().cmp(b.pass.title()))
-        });
+        let now =
+            chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now()).fixed_offset();
+        order(&mut passes, now);
         Ok(Listing {
             passes,
             unreadable: failures,
@@ -211,6 +206,47 @@ impl PassStore {
         let path = self.root.join(id).join(PASS_FILE);
         std::fs::read(&path).map_err(|source| Error::Io { path, source })
     }
+}
+
+/// How long after its relevant date a pass with no expiry still counts as
+/// current: a day, so that the evening's return leg of a morning flight, or a
+/// ticket for a show that ran late, is still at the top.
+const STILL_CURRENT_FOR: chrono::TimeDelta = chrono::TimeDelta::days(1);
+
+/// Sorts passes into the order a wallet is useful in, as of `now`.
+///
+/// 1. Current passes with a date, soonest first — today's flight at the top.
+/// 2. Passes with no date, by title: loyalty cards and the like.
+/// 3. Past passes, most recent first, so last year's flights sink below the
+///    cards instead of sitting above today's. A pass is past when it is
+///    voided, when its expiry has passed, or — with no expiry — when its
+///    relevant date is more than [`STILL_CURRENT_FOR`] ago.
+fn order(passes: &mut [StoredPass], now: chrono::DateTime<chrono::FixedOffset>) {
+    let past = |pass: &Pass| {
+        pass.voided
+            || pass.is_expired(now)
+            || (pass.expiration_date.is_none()
+                && pass
+                    .relevant_date
+                    .is_some_and(|date| date + STILL_CURRENT_FOR < now))
+    };
+    let group = |pass: &Pass| match (past(pass), pass.relevant_date) {
+        (false, Some(_)) => 0,
+        (false, None) => 1,
+        (true, _) => 2,
+    };
+    passes.sort_by(|a, b| {
+        let (a, b) = (&a.pass, &b.pass);
+        group(a)
+            .cmp(&group(b))
+            .then_with(|| match group(a) {
+                0 => a.relevant_date.cmp(&b.relevant_date),
+                // Most recent first; an undated past pass after the dated.
+                2 => b.relevant_date.cmp(&a.relevant_date),
+                _ => std::cmp::Ordering::Equal,
+            })
+            .then_with(|| a.title().cmp(b.title()))
+    });
 }
 
 /// `$POCKET_PASS_DIR`, else `$XDG_DATA_HOME/pocket/passes`, else
@@ -292,5 +328,68 @@ mod tests {
         let mut ids: Vec<&str> = listing.unreadable.iter().map(|u| u.id.as_str()).collect();
         ids.sort_unstable();
         assert_eq!(ids, ["empty", "loose.pkpass"]);
+    }
+
+    /// Upcoming passes first, soonest at the top; then undated cards; then
+    /// what is over, most recent first. Strict date order put last year's
+    /// flight above today's.
+    #[test]
+    fn passes_are_ordered_upcoming_then_undated_then_past() {
+        use crate::pkpass::tests::{BOARDING, pkpass};
+
+        let stored = |id: &str, relevant: Option<&str>, expiry: Option<&str>, voided: bool| {
+            let mut json: serde_json::Value = serde_json::from_str(BOARDING).unwrap();
+            let object = json.as_object_mut().unwrap();
+            object.insert("logoText".into(), id.into());
+            object.remove("relevantDate");
+            object.remove("expirationDate");
+            if let Some(date) = relevant {
+                object.insert("relevantDate".into(), date.into());
+            }
+            if let Some(date) = expiry {
+                object.insert("expirationDate".into(), date.into());
+            }
+            object.insert("voided".into(), voided.into());
+            let text = json.to_string();
+            StoredPass {
+                id: id.to_owned(),
+                path: PathBuf::new(),
+                pass: crate::pkpass::read(&pkpass(&[("pass.json", text.as_bytes())])).unwrap(),
+            }
+        };
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-29T12:00:00+00:00").unwrap();
+        let mut passes = vec![
+            stored("last-year", Some("2025-09-20T06:40:00+00:00"), None, false),
+            stored("card", None, None, false),
+            stored("next-week", Some("2026-10-06T08:00:00+00:00"), None, false),
+            stored(
+                "this-morning",
+                Some("2026-09-29T06:00:00+00:00"),
+                None,
+                false,
+            ),
+            stored(
+                "expired",
+                Some("2026-10-01T08:00:00+00:00"),
+                Some("2026-09-28T00:00:00+00:00"),
+                false,
+            ),
+            stored("voided", Some("2026-10-02T08:00:00+00:00"), None, true),
+            stored("last-month", Some("2026-08-29T06:40:00+00:00"), None, false),
+        ];
+        order(&mut passes, now);
+        let ids: Vec<&str> = passes.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "this-morning",
+                "next-week",
+                "card",
+                "voided",
+                "expired",
+                "last-month",
+                "last-year"
+            ]
+        );
     }
 }

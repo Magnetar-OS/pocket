@@ -60,7 +60,9 @@ Working and tested:
   present with the digest it claims, and no file in the archive is unaccounted
   for. A truncated download and content appended after signing both fail.
 - The pass store: one directory per pass holding the original archive, sorted
-  soonest-relevant first, with unreadable passes reported rather than dropped
+  with upcoming passes first (soonest at the top), then undated cards, then
+  expired, voided and past passes, with unreadable passes reported rather than
+  dropped
 - **Barcodes, all four symbologies** — PDF417 and Aztec for airlines and rail,
   QR for events and loyalty, Code 128 for older retail — drawn at whole-pixel
   module sizes, black on white whatever the theme is, with the quiet zone the

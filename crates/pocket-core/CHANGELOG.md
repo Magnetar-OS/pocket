@@ -7,6 +7,13 @@ application keeps its own changelog at the repository root.
 
 ## [Unreleased]
 
+### Changed
+
+- `PassStore::list` puts past passes last: upcoming passes first, soonest at
+  the top, then undated ones, then voided, expired and past passes, most
+  recent first. A pass with no expiry counts as past a day after its relevant
+  date. Strict date order put last year's flights above today's.
+
 ### Fixed
 
 - Pass dates without seconds (`2014-12-05T09:00-08:00`, the form Apple's own

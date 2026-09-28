@@ -6,6 +6,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Past passes sink to the bottom of the list: upcoming passes come first,
+  soonest at the top, then cards without a date, then voided, expired and
+  past passes, most recent first. Last year's flights sat above today's.
+
 ### Fixed
 
 - Passes whose dates carry no seconds — the form Apple's own examples use,
