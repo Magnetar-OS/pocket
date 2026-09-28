@@ -3843,6 +3843,7 @@ name = "pocket"
 version = "1.1.0"
 dependencies = [
  "ashpd 0.12.3",
+ "chrono",
  "i18n-embed",
  "i18n-embed-fl",
  "libcosmic",

@@ -6,6 +6,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- An expired pass says "Expired" on its face and in the list, and a voided one
+  says so in the list as well as on its face.
+
 ### Changed
 
 - Past passes sink to the bottom of the list: upcoming passes come first,

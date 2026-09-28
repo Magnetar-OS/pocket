@@ -111,6 +111,7 @@ impl AppModel {
 
     fn list(&self) -> Element<'_, Message> {
         let visible = self.visible();
+        let now = now();
         if visible.is_empty() {
             return widget::text::body(fl!("no-passes")).into();
         }
@@ -121,7 +122,7 @@ impl AppModel {
             let mut lines = widget::column::with_capacity(2)
                 .push(widget::text::body(pass.title().to_owned()))
                 .spacing(2);
-            if let Some(detail) = summary(pass) {
+            if let Some(detail) = summary(pass, now) {
                 lines = lines.push(widget::text::caption(detail));
             }
             column = column.add(
@@ -153,7 +154,7 @@ impl AppModel {
         let Some(pass) = self.selected_pass() else {
             return widget::text::body(fl!("select-a-pass")).into();
         };
-        crate::face::view(pass, self.symbol.as_ref())
+        crate::face::view(pass, self.symbol.as_ref(), now())
     }
 
     /// Enters or leaves the presenter, moving the window and the desktop
@@ -190,21 +191,30 @@ impl AppModel {
     }
 }
 
+/// The time to judge a pass's expiry by.
+fn now() -> chrono::DateTime<chrono::FixedOffset> {
+    chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now()).fixed_offset()
+}
+
 /// The one line under a pass's name in the list.
 ///
 /// The primary fields joined, which for a boarding pass reads `ATH → LHR`
-/// and for a store card is usually the single balance or member number.
-fn summary(pass: &Pass) -> Option<String> {
+/// and for a store card is usually the single balance or member number,
+/// followed by "Expired" or "Voided" when the pass is no longer good.
+fn summary(pass: &Pass, now: chrono::DateTime<chrono::FixedOffset>) -> Option<String> {
     let values: Vec<&str> = pass
         .primary_fields
         .iter()
         .map(|field| field.value.as_str())
         .filter(|value| !value.is_empty())
         .collect();
-    if values.is_empty() {
-        return None;
+    let status = crate::face::status(pass, now);
+    match (values.is_empty(), status) {
+        (true, None) => None,
+        (true, Some(status)) => Some(status),
+        (false, None) => Some(values.join(" → ")),
+        (false, Some(status)) => Some(format!("{} · {status}", values.join(" → "))),
     }
-    Some(values.join(" → "))
 }
 
 fn label(filter: Filter) -> String {
@@ -486,5 +496,48 @@ mod tests {
         let lines = app.unreadable_lines();
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("flight-to-lhr") && lines[0].contains("not a zip archive"));
+    }
+
+    /// A pass with the given dates, and nothing else of note.
+    fn pass(expiry: Option<&str>, voided: bool) -> Pass {
+        Pass {
+            kind: PassKind::BoardingPass,
+            serial_number: "S".to_owned(),
+            pass_type_identifier: String::new(),
+            team_identifier: String::new(),
+            organization_name: "Example Air".to_owned(),
+            description: String::new(),
+            logo_text: None,
+            transit_type: None,
+            relevant_date: None,
+            expiration_date: expiry.map(|date| chrono::DateTime::parse_from_rfc3339(date).unwrap()),
+            voided,
+            web_service_url: None,
+            header_fields: Vec::new(),
+            primary_fields: vec![pocket_core::Field {
+                key: "route".to_owned(),
+                label: None,
+                value: "ATH".to_owned(),
+            }],
+            secondary_fields: Vec::new(),
+            auxiliary_fields: Vec::new(),
+            back_fields: Vec::new(),
+            barcodes: Vec::new(),
+            background_color: None,
+            foreground_color: None,
+            label_color: None,
+        }
+    }
+
+    /// An expired or voided pass says so in the list; a good one does not.
+    #[test]
+    fn the_list_says_when_a_pass_is_expired_or_voided() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-29T12:00:00+00:00").unwrap();
+        let good = summary(&pass(Some("2026-10-01T00:00:00+00:00"), false), now).unwrap();
+        let expired = summary(&pass(Some("2026-09-01T00:00:00+00:00"), false), now).unwrap();
+        let voided = summary(&pass(None, true), now).unwrap();
+        assert!(!good.contains(&fl!("expired")) && !good.contains(&fl!("voided")));
+        assert!(expired.contains(&fl!("expired")), "{expired}");
+        assert!(voided.contains(&fl!("voided")), "{voided}");
     }
 }

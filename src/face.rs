@@ -13,6 +13,7 @@
 //! What the issuer does *not* get to decide is the barcode. See
 //! [`crate::barcode`].
 
+use chrono::{DateTime, FixedOffset};
 use cosmic::Element;
 use cosmic::iced::{Alignment, Color, Length};
 use cosmic::widget::{self, container};
@@ -107,13 +108,14 @@ fn legible_on(background: Color) -> Color {
 pub fn view<'a>(
     pass: &'a Pass,
     barcode: Option<&'a Result<Symbol, String>>,
+    now: DateTime<FixedOffset>,
 ) -> Element<'a, Message> {
     let spacing = cosmic::theme::spacing();
     let palette = Palette::of(pass);
 
     let mut column = widget::column::with_capacity(4)
         .spacing(spacing.space_s)
-        .push(card(pass, palette));
+        .push(card(pass, palette, now));
 
     if let Some(barcode) = barcode {
         column = column.push(barcode_section(pass, barcode));
@@ -131,8 +133,22 @@ pub fn view<'a>(
     widget::scrollable(column).height(Length::Fill).into()
 }
 
+/// Whether a pass is still good, in words, when it is not: voided by the
+/// issuer, or past its expiry. `None` for a pass that is still good, which
+/// says nothing.
+#[must_use]
+pub fn status(pass: &Pass, now: DateTime<FixedOffset>) -> Option<String> {
+    if pass.voided {
+        Some(fl!("voided"))
+    } else if pass.is_expired(now) {
+        Some(fl!("expired"))
+    } else {
+        None
+    }
+}
+
 /// The card itself, in the issuer's colours.
-fn card(pass: &Pass, palette: Palette) -> Element<'_, Message> {
+fn card(pass: &Pass, palette: Palette, now: DateTime<FixedOffset>) -> Element<'_, Message> {
     let spacing = cosmic::theme::spacing();
     let mut column = widget::column::with_capacity(5).spacing(spacing.space_s);
 
@@ -147,11 +163,11 @@ fn card(pass: &Pass, palette: Palette) -> Element<'_, Message> {
         }
     }
 
-    // A voided pass is kept and said to be void. Deleting it would be tidier
-    // and would also destroy the record of something that happened.
-    if pass.voided {
-        column =
-            column.push(widget::text::body(fl!("voided")).class(Palette::text(palette.foreground)));
+    // A voided or expired pass is kept and said to be so. Deleting it would
+    // be tidier and would also destroy the record of something that
+    // happened; showing it as good would send someone to a gate with it.
+    if let Some(status) = status(pass, now) {
+        column = column.push(widget::text::body(status).class(Palette::text(palette.foreground)));
     }
 
     widget::container(column)
