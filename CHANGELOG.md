@@ -8,6 +8,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- "Open with Pocket" from a file manager shows the chosen `.pkpass` at the
+  top of the list, selected and ready to present, marked as opened from a file
+  rather than kept in the wallet. The file was ignored and Pocket opened on
+  the existing list. A file that cannot be read is listed with the reason.
 - An expired pass says "Expired" on its face and in the list, and a voided one
   says so in the list as well as on its face.
 

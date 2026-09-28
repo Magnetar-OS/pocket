@@ -72,6 +72,13 @@ features = [
     "xdg-portal",
 ]
 
+[dev-dependencies]
+tempfile = "3"
+# To build a `.pkpass` for "Open with Pocket" to read, with a manifest the
+# reader accepts: the same two pocket-core's own tests use.
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+sha1 = "0.11.0"
+
 [[bin]]
 name = "pocket"
 path = "src/main.rs"

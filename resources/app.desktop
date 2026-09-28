@@ -3,7 +3,7 @@ Name=Pocket
 GenericName=Wallet
 Comment=Boarding passes, tickets and cards, with their barcodes ready to scan
 Categories=COSMIC;Utility;
-Exec=pocket %U
+Exec=pocket %F
 Icon=com.magnetaros.Pocket
 Terminal=false
 Type=Application
@@ -17,3 +17,7 @@ Keywords=wallet;pass;passes;pkpass;boarding;ticket;barcode;loyalty;card;coupon;
 # org.freedesktop.Application the freedesktop spec requires, so GIO's call fails
 # silently and opening a .pkpass from a file manager would do nothing at all.
 # The Exec line reaches the same place.
+# %F, not %U: Pocket reads local files, and with %F the file manager hands over
+# paths (mounting a remote file first) instead of URLs. A pass opened this way
+# is shown, not added to the wallet; import arrives with the crash-safe writer
+# (ROADMAP milestone 3).

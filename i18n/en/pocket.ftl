@@ -29,6 +29,8 @@ passes-count = { $count } { $count ->
        *[other] passes
     }
 select-a-pass = Select a pass
+# Above a pass opened from a file rather than from the wallet.
+opened-from-file = Opened from a file. This pass is shown, not added to your wallet.
 
 ## A pass
 

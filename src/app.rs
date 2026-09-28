@@ -7,6 +7,8 @@
 //! about *what a pass is* lives in `pocket-core`; how a pass looks is in
 //! [`crate::face`] and [`crate::presenter`].
 
+use std::path::PathBuf;
+
 use cosmic::app::{Core, Task, context_drawer};
 use cosmic::iced::Length;
 use cosmic::prelude::*;
@@ -54,6 +56,10 @@ pub struct AppModel {
     /// wallet that silently shows fewer passes than the directory holds is
     /// the failure a traveller finds at the gate.
     unreadable: Vec<UnreadablePass>,
+    /// How many of `passes`, from the front, were opened from files named on
+    /// the command line rather than read from the store. They are shown, not
+    /// kept: import needs the crash-safe writer (ROADMAP milestone 3).
+    opened: usize,
     /// Index into `passes`, not into the filtered view: the filter changes,
     /// the selection should not follow it to a different pass.
     selected: Option<usize>,
@@ -154,7 +160,25 @@ impl AppModel {
         let Some(pass) = self.selected_pass() else {
             return widget::text::body(fl!("select-a-pass")).into();
         };
-        crate::face::view(pass, self.symbol.as_ref(), now())
+        let face = crate::face::view(pass, self.symbol.as_ref(), now());
+        if self.selected.is_some_and(|index| index < self.opened) {
+            return widget::column::with_capacity(2)
+                .spacing(cosmic::theme::spacing().space_xs)
+                .push(widget::text::caption(fl!("opened-from-file")))
+                .push(face)
+                .into();
+        }
+        face
+    }
+
+    /// Selects a pass and encodes its barcode, once.
+    fn select(&mut self, index: usize) {
+        self.selected = Some(index);
+        self.symbol = self
+            .passes
+            .get(index)
+            .and_then(|stored| stored.pass.barcode())
+            .map(|barcode| pocket_core::barcode::encode(barcode).map_err(|why| why.to_string()));
     }
 
     /// Enters or leaves the presenter, moving the window and the desktop
@@ -189,6 +213,42 @@ impl AppModel {
 
         Task::batch([window, desktop])
     }
+}
+
+/// The most of a file read before handing it to the reader, which refuses an
+/// archive over 64 MiB: one byte more than that is enough for it to say so,
+/// and a file of any size is never loaded whole just to be refused.
+const OPEN_FILE_LIMIT: u64 = 64 * 1024 * 1024 + 1;
+
+/// Reads the `.pkpass` files named on the command line, for showing.
+///
+/// Each becomes a pass, or an unreadable entry naming the file and saying
+/// why: a file the user explicitly opened must not vanish without a word.
+fn open_files(files: &[PathBuf]) -> (Vec<StoredPass>, Vec<UnreadablePass>) {
+    use std::io::Read as _;
+
+    let mut passes = Vec::new();
+    let mut unreadable = Vec::new();
+    for path in files {
+        let mut bytes = Vec::new();
+        let read = std::fs::File::open(path)
+            .and_then(|file| file.take(OPEN_FILE_LIMIT).read_to_end(&mut bytes))
+            .map_err(|why| why.to_string())
+            .and_then(|_| pocket_core::pkpass::read(&bytes).map_err(|why| why.to_string()));
+        let id = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        match read {
+            Ok(pass) => passes.push(StoredPass {
+                id,
+                path: path.clone(),
+                pass,
+            }),
+            Err(reason) => unreadable.push(UnreadablePass { id, reason }),
+        }
+    }
+    (passes, unreadable)
 }
 
 /// The time to judge a pass's expiry by.
@@ -230,7 +290,8 @@ fn label(filter: Filter) -> String {
 
 impl cosmic::Application for AppModel {
     type Executor = cosmic::executor::Default;
-    type Flags = ();
+    /// Files to show, from "Open with Pocket".
+    type Flags = Vec<PathBuf>;
     type Message = Message;
     const APP_ID: &'static str = APP_ID;
 
@@ -242,7 +303,7 @@ impl cosmic::Application for AppModel {
         &mut self.core
     }
 
-    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
+    fn init(core: Core, files: Self::Flags) -> (Self, Task<Self::Message>) {
         let about = About::default()
             .name(fl!("app-title"))
             .icon(widget::icon::from_svg_bytes(APP_ICON))
@@ -263,7 +324,10 @@ impl cosmic::Application for AppModel {
             .map(|store| store.root().display().to_string())
             .unwrap_or_default();
 
-        let Listing { passes, unreadable } = store
+        let Listing {
+            passes: stored,
+            unreadable: stored_unreadable,
+        } = store
             .as_ref()
             .map(|store| match store.list() {
                 Ok(listing) => listing,
@@ -284,22 +348,31 @@ impl cosmic::Application for AppModel {
             nav.insert().text(label(filter)).data(filter);
         }
 
-        (
-            Self {
-                core,
-                about,
-                nav,
-                passes,
-                unreadable,
-                selected: None,
-                symbol: None,
-                presenting: false,
-                hold: Hold::default(),
-                root,
-                fatal,
-            },
-            Task::none(),
-        )
+        // Files handed over by the file manager come first and the first of
+        // them is selected: it is what the user just asked to see.
+        let (mut passes, mut unreadable) = open_files(&files);
+        let opened = passes.len();
+        passes.extend(stored);
+        unreadable.extend(stored_unreadable);
+
+        let mut app = Self {
+            core,
+            about,
+            nav,
+            passes,
+            unreadable,
+            opened,
+            selected: None,
+            symbol: None,
+            presenting: false,
+            hold: Hold::default(),
+            root,
+            fatal,
+        };
+        if opened > 0 {
+            app.select(0);
+        }
+        (app, Task::none())
     }
 
     fn nav_model(&self) -> Option<&nav_bar::Model> {
@@ -392,16 +465,7 @@ impl cosmic::Application for AppModel {
 
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
         match message {
-            Message::Select(index) => {
-                self.selected = Some(index);
-                self.symbol = self
-                    .passes
-                    .get(index)
-                    .and_then(|stored| stored.pass.barcode())
-                    .map(|barcode| {
-                        pocket_core::barcode::encode(barcode).map_err(|why| why.to_string())
-                    });
-            }
+            Message::Select(index) => self.select(index),
             Message::Present => {
                 if self.presentable().is_some() {
                     return self.present(true);
@@ -449,6 +513,7 @@ mod tests {
             nav: nav_bar::Model::default(),
             passes: Vec::new(),
             unreadable: Vec::new(),
+            opened: 0,
             selected: None,
             symbol: None,
             presenting: false,
@@ -539,5 +604,50 @@ mod tests {
         assert!(!good.contains(&fl!("expired")) && !good.contains(&fl!("voided")));
         assert!(expired.contains(&fl!("expired")), "{expired}");
         assert!(voided.contains(&fl!("voided")), "{voided}");
+    }
+
+    /// "Open with Pocket" on a `.pkpass` shows that pass; a file that is not
+    /// one is named as unreadable rather than ignored.
+    #[test]
+    fn files_opened_from_the_file_manager_are_shown_or_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let broken = dir.path().join("broken.pkpass");
+        std::fs::write(&broken, b"not a zip").unwrap();
+        let missing = dir.path().join("missing.pkpass");
+
+        let good = dir.path().join("flight.pkpass");
+        std::fs::write(
+            &good,
+            pkpass(r#"{"organizationName":"Example Air","boardingPass":{}}"#),
+        )
+        .unwrap();
+
+        let (passes, unreadable) = open_files(&[good.clone(), broken, missing]);
+        assert_eq!(passes.len(), 1);
+        assert_eq!(passes[0].path, good);
+        assert_eq!(passes[0].pass.title(), "Example Air");
+        let ids: Vec<&str> = unreadable.iter().map(|u| u.id.as_str()).collect();
+        assert_eq!(ids, ["broken.pkpass", "missing.pkpass"]);
+    }
+
+    /// A `.pkpass` holding `pass_json`, with a manifest the reader accepts.
+    fn pkpass(pass_json: &str) -> Vec<u8> {
+        use sha1::Digest as _;
+        use std::io::Write as _;
+
+        let digest: String = sha1::Sha1::digest(pass_json.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let manifest = format!(r#"{{"pass.json":"{digest}"}}"#);
+        let mut buffer = Vec::new();
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buffer));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("pass.json", options).unwrap();
+        zip.write_all(pass_json.as_bytes()).unwrap();
+        zip.start_file("manifest.json", options).unwrap();
+        zip.write_all(manifest.as_bytes()).unwrap();
+        zip.finish().unwrap();
+        buffer
     }
 }

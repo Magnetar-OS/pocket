@@ -85,10 +85,11 @@ Not done, and not pretended otherwise:
   public so the check is implementable — a function returning "valid" without
   doing it would be worse than its absence.
 - **There is no import.** A `.pkpass` has to be copied into the pass directory
-  by hand; opening one from the file manager or a dialogue needs a crash-safe
-  writer, and that writer already exists as `cosmic_pim_core::atomic`. It
-  arrives with the substrate dependency rather than being written a second time
-  here.
+  by hand to stay; importing one needs a crash-safe writer, and that writer
+  already exists as `cosmic_pim_core::atomic`. It arrives with the substrate
+  dependency rather than being written a second time here. Opening a
+  `.pkpass` from the file manager shows it, barcode and all, without keeping
+  it.
 - No extraction from mail or PDFs, no calendar writing, no Locket client, no
   applet, no launcher or `peek` plugin, no packaging.
 

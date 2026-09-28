@@ -3850,10 +3850,13 @@ dependencies = [
  "open",
  "pocket-core",
  "rust-embed",
+ "sha1",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "xdgen",
  "zbus",
+ "zip",
 ]
 
 [[package]]

@@ -40,6 +40,8 @@ of the criterion above except the reader itself. **Import is not implemented**:
 by this milestone's own note it needs the crash-safe writer, and that writer is
 `cosmic_pim_core::atomic`, which arrives with the cosmic-pim dependency in
 milestone 3 rather than being written a second time here.
+Until then, "Open with Pocket" on a `.pkpass` shows the pass — face, barcode
+and presenter — without adding it to the wallet.
 
 ## Milestone 2 — verification that means something
 

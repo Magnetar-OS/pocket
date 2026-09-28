@@ -38,5 +38,12 @@ pub fn run() -> cosmic::iced::Result {
                 .min_height(480.0),
         );
 
-    cosmic::app::run::<app::AppModel>(settings, ())
+    // The files "Open with Pocket" hands over (`Exec=pocket %F`), shown
+    // alongside the wallet without being added to it.
+    let files = std::env::args_os()
+        .skip(1)
+        .map(std::path::PathBuf::from)
+        .collect();
+
+    cosmic::app::run::<app::AppModel>(settings, files)
 }
