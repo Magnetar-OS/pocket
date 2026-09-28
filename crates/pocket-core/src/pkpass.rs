@@ -681,4 +681,50 @@ pub(crate) mod tests {
         files.extend(names.iter().map(|name| (name.as_str(), b"x".as_slice())));
         assert!(is_refused(&read(&pkpass(&files))));
     }
+
+    /// An archive that names `pass.json` twice. The zip reader keeps one
+    /// entry per name, and `read` and `authentication_token` must agree on
+    /// which: otherwise the token handed to the Secret Service could belong
+    /// to a different pass from the one on screen.
+    #[test]
+    fn a_duplicated_pass_json_is_read_the_same_way_by_both_readers() {
+        let decoy = BOARDING
+            .replace("Example Air", "Somebody Else")
+            .replace("s3cret-token", "decoy-token");
+        let manifest = format!(r#"{{"pass.json":"{}"}}"#, digest_hex(decoy.as_bytes()));
+        let mut bytes = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut bytes));
+            let options = SimpleFileOptions::default();
+            for (name, content) in [
+                ("pass.json", BOARDING.as_bytes()),
+                ("pass.jsoo", decoy.as_bytes()),
+                ("manifest.json", manifest.as_bytes()),
+            ] {
+                zip.start_file(name, options).unwrap();
+                zip.write_all(content).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        // No zip writer will write one name twice, so the second is renamed
+        // in place, in its local and its central header: same length, and the
+        // checksums cover the data, not the name.
+        let (from, to) = (b"pass.jsoo".as_slice(), b"pass.json".as_slice());
+        let mut at = 0;
+        while let Some(found) = bytes[at..].windows(from.len()).position(|w| w == from) {
+            bytes[at + found..at + found + from.len()].copy_from_slice(to);
+            at += found + from.len();
+        }
+
+        let token = authentication_token(&bytes).unwrap();
+        match read(&bytes) {
+            Ok(pass) => assert_eq!(
+                pass.title() == "Somebody Else",
+                token.as_deref() == Some("decoy-token"),
+                "the pass and its token came from different copies of pass.json"
+            ),
+            // The copy the manifest does not vouch for was chosen: refused.
+            Err(why) => assert!(matches!(why, Error::ManifestDigestMismatch { .. })),
+        }
+    }
 }
