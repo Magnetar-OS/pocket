@@ -6,6 +6,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Passes whose dates carry no seconds — the form Apple's own examples use,
+  such as `2014-12-05T09:00-08:00` — keep their relevant date and expiry. They
+  were read as undated, so a boarding pass sorted below the loyalty cards.
+
 ## [1.1.0] - 2026-09-22
 
 ### Changed

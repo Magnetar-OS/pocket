@@ -297,8 +297,20 @@ fn string(json: &serde_json::Value, key: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+/// A `pass.json` date: a W3C timestamp, "a complete date plus hours and
+/// minutes" or "… plus hours, minutes and seconds" (Apple's Wallet Developer
+/// Guide). RFC 3339 covers the second form only, and the first is the one
+/// Apple's own examples use (`2014-12-05T09:00-08:00`).
 fn date(json: &serde_json::Value, key: &str) -> Option<DateTime<FixedOffset>> {
-    string(json, key).and_then(|text| DateTime::parse_from_rfc3339(&text).ok())
+    let text = string(json, key)?;
+    DateTime::parse_from_rfc3339(&text).ok().or_else(|| {
+        // Without seconds. `%:z` takes `±hh:mm` but not the `Z` designator,
+        // which means the same as `+00:00`.
+        let offset = text
+            .strip_suffix('Z')
+            .map_or_else(|| text.clone(), |bare| format!("{bare}+00:00"));
+        DateTime::parse_from_str(&offset, "%Y-%m-%dT%H:%M%:z").ok()
+    })
 }
 
 #[cfg(test)]
@@ -453,6 +465,23 @@ mod tests {
             read(&buffer),
             Err(Error::ManifestExtraFile { .. })
         ));
+    }
+
+    /// PassKit's dates are W3C timestamps, and "a complete date plus hours
+    /// and minutes" — no seconds — is the form Apple's own examples use. A
+    /// date read as absent sorts a boarding pass below the loyalty cards.
+    #[test]
+    fn a_date_without_seconds_is_still_a_date() {
+        let pass_json = BOARDING
+            .replace("2026-09-20T06:40:00+03:00", "2026-09-20T06:40+03:00")
+            .replace("2026-09-20T12:00:00+03:00", "2026-09-20T12:00Z");
+        let bytes = pkpass(&[("pass.json", pass_json.as_bytes())]);
+        let pass = read(&bytes).unwrap();
+
+        let relevant = pass.relevant_date.expect("the relevant date is read");
+        assert_eq!(relevant.to_rfc3339(), "2026-09-20T06:40:00+03:00");
+        let expiry = pass.expiration_date.expect("the expiry is read");
+        assert_eq!(expiry.to_rfc3339(), "2026-09-20T12:00:00+00:00");
     }
 
     #[test]
