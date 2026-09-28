@@ -41,7 +41,7 @@ i18n-embed-fl = "0.10"
 rust-embed = "8.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-open = "5.4.3"
+open = "5.4.4"
 # Only to ask a pass whether it has expired "now": `Pass::is_expired` takes a
 # time, and the clock is read through `SystemTime`, so no `clock` feature.
 chrono = { version = "0.4", default-features = false, features = ["std"] }

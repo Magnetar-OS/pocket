@@ -28,7 +28,7 @@ sha1 = "0.11.0"
 # optional — the crate refuses to build without a character-set backend, and
 # a character set is the whole point of `messageEncoding`.
 [dependencies.rxing]
-version = "0.9.2"
+version = "0.9.3"
 default-features = false
 features = ["encoders", "encoding_rs", "aztec", "qrcode", "pdf417", "oned"]
 
@@ -44,7 +44,7 @@ sha1 = "0.11.0"
 # compares the string is the same check the gate performs. It is a
 # dev-dependency so the shipped binary carries no scanner.
 [dev-dependencies.rxing]
-version = "0.9.2"
+version = "0.9.3"
 default-features = false
 features = ["decoders", "encoders", "encoding_rs", "aztec", "qrcode", "pdf417", "oned"]
 
