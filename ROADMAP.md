@@ -7,7 +7,8 @@ Milestone 1 is done except for import, which the milestone itself defers to the
 cosmic-pim dependency in milestone 3. All four symbologies render and scan, the
 declared `messageEncoding` is obeyed, there is a full-screen presenter that
 holds the screen awake and bright, and a pass is drawn in its issuer's colours
-with the layout its style specifies. Everything from milestone 2 down is open.
+with the layout its style specifies. From milestone 2, expiry and voiding are
+surfaced; the rest from milestone 2 down is open.
 
 ## Milestone 1 — a pass you can actually use
 
@@ -59,6 +60,10 @@ Manifest digests catch a corrupt download. They prove nothing about origin.
 
 Done when: a genuine pass verifies, a pass with a tampered `pass.json` fails,
 and an expired certificate is distinguishable from an invalid signature.
+
+**Where this stands.** Expiry and voiding are surfaced: a voided or expired
+pass says so on its face and in the list, and sorts below the current ones.
+Signature verification and the verified/unverified state are open.
 
 ## Milestone 3 — passes arrive on their own
 

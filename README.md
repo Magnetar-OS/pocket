@@ -91,10 +91,12 @@ Not done, and not pretended otherwise:
   `.pkpass` from the file manager shows it, barcode and all, without keeping
   it.
 - No extraction from mail or PDFs, no calendar writing, no Locket client, no
-  applet, no launcher or `peek` plugin, no packaging.
+  applet, no launcher or `peek` plugin.
 
-It runs on one machine, its author's. Nobody has reviewed it and no distribution
-ships it.
+Each release is packaged as `.deb`, `.rpm` and Arch packages (`packaging/linux`,
+built by `.github/workflows/release.yml`) and published to the Magnetar Arch
+repository and the AUR. `pocket-core` is published on crates.io. Nobody outside
+the project has reviewed it.
 
 ## Try it
 
