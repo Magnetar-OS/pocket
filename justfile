@@ -87,7 +87,20 @@ test *args:
 # templates are not themselves valid installable files once xdgen is in the
 # picture, and it is the generated pair that ends up on a user's disk.
 validate-metadata: build-debug
-    desktop-file-validate {{desktop-src}}
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # `Categories=COSMIC;` is what COSMIC's own apps and applets ship, but
+    # desktop-file-validate 0.27 (Ubuntu noble, which CI has) rejects the
+    # unregistered value as an error; 0.28 downgraded it to a hint. Matching
+    # the platform matters more than the older validator, so that one error is
+    # tolerated and every other error still fails the recipe. Same rule as
+    # circle's, slate's and envelope's `validate-metadata`.
+    output=$(desktop-file-validate {{desktop-src}} 2>&1 || true)
+    [ -n "$output" ] && printf '%s\n' "$output"
+    if printf '%s\n' "$output" | grep 'error:' | grep -qv 'unregistered value "COSMIC"'; then
+        echo 'validate-metadata: desktop entry validation failed' >&2
+        exit 1
+    fi
     appstreamcli validate --no-net {{metainfo-src}}
 
 # Run the application for testing purposes
