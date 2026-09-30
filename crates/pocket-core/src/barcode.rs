@@ -261,7 +261,7 @@ mod tests {
             BarcodeFormat::Qr,
             BarcodeFormat::Code128,
         ] {
-            let message = "M1PRITIS/DOMINIKOS EABC123 ATHLHR";
+            let message = "M1DOE/JANE         EABC123 ATHLHR";
             let symbol = encode(&barcode(format, message, "iso-8859-1"))
                 .unwrap_or_else(|why| panic!("{} should encode: {why}", format.label()));
             assert_eq!(

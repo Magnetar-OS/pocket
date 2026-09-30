@@ -27,7 +27,7 @@ const TICKET: &str = r#"{
     "barcodes": [
         {
             "format": "PKBarcodeFormatAztec",
-            "message": "R778 ATH-SKG 02OCT COACH B SEAT 41 PRITIS/D",
+            "message": "R778 ATH-SKG 02OCT COACH B SEAT 41 DOE/J",
             "messageEncoding": "iso-8859-1",
             "altText": "R778"
         }

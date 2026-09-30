@@ -457,7 +457,7 @@ pub(crate) mod tests {
         "barcodes": [
             {
                 "format": "PKBarcodeFormatPDF417",
-                "message": "M1PRITIS/DOMINIKOS  EABC123 ATHLHRXA",
+                "message": "M1DOE/JANE          EABC123 ATHLHRXA",
                 "messageEncoding": "iso-8859-1",
                 "altText": "ABC123"
             }
