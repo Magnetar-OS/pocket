@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-30
+
 ### Added
 
 - **Add to wallet.** A pass opened from the file manager is shown with an
@@ -135,7 +137,8 @@ a pass on screen whose barcode a reader can scan.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 
-[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Magnetar-OS/pocket/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Magnetar-OS/pocket/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Magnetar-OS/pocket/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/Magnetar-OS/pocket/compare/v1.0.1...v1.0.2
