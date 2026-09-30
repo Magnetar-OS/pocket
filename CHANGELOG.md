@@ -6,6 +6,35 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Add to wallet.** A pass opened from the file manager is shown with an
+  "Add to wallet" button beside it; pressing it keeps the pass. It was shown
+  and then forgotten, and keeping one meant copying the file into the passes
+  folder by hand.
+- **Add pass…** in the header opens a file dialog and adds the `.pkpass` files
+  chosen there. A file that is not a pass is listed by name with the reason,
+  and does not stop the others.
+- Dropping `.pkpass` files on the window adds them, from a file manager or
+  — through the document portal — from a sandboxed application.
+- `.pkpasses` bundles, which airlines send for a booking with several
+  travellers, open and add as every pass they hold. Pocket is offered for
+  them in "Open With" too. Each pass in a bundle is held to the same size
+  limits as a single `.pkpass`.
+- **Remove from wallet**, under a stored pass, deletes it after asking.
+- Adding a pass the wallet already holds does not add a second copy. A pass is
+  the same pass when its issuer's type identifier and its serial number match:
+  the identical file is reported as already there, and a newer version — a
+  re-sent boarding pass with a new gate — replaces the stored one.
+
+### Changed
+
+- Passes are added through the suite's crash-safe writer
+  (`cosmic_pim_core::atomic`), and checked first with the same reader and the
+  same size limits as every later read: a pass is in the wallet whole, or not
+  at all. The folders Pocket creates for them are readable by you alone.
+- Built against `pocket-core` 1.1.0.
+
 ## [1.2.0] - 2026-09-29
 
 ### Added

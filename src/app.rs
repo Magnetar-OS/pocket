@@ -6,15 +6,29 @@
 //! the selected pass, and puts its barcode full-screen when asked. Everything
 //! about *what a pass is* lives in `pocket-core`; how a pass looks is in
 //! [`crate::face`] and [`crate::presenter`].
+//!
+//! # Shown, and kept
+//!
+//! A `.pkpass` reaches the window two ways. **Opened** — "Open with Pocket"
+//! in a file manager, or `pocket flight.pkpass` — it is *shown*: at the top
+//! of the list, with its barcode ready, and nothing is written anywhere.
+//! Keeping it is a separate, explicit step, **Add to wallet**, because
+//! looking at a pass somebody sent is not a decision to carry it. **Add
+//! pass…** in the header, or dropping files on the window, is that decision
+//! made up front: those files go straight into the wallet. A `.pkpasses`
+//! bundle — several travellers on one booking — is each pass it holds.
+//!
+//! Either way it is `PassStore::add` that stores the pass — verified first,
+//! written atomically, and one pass however often it is added.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use cosmic::app::{Core, Task, context_drawer};
 use cosmic::iced::Length;
 use cosmic::prelude::*;
 use cosmic::widget::about::About;
 use cosmic::widget::{self, nav_bar};
-use pocket_core::{Listing, Pass, PassKind, PassStore, StoredPass, Symbol, UnreadablePass};
+use pocket_core::{Added, Listing, Pass, PassKind, PassStore, StoredPass, Symbol, UnreadablePass};
 
 use crate::fl;
 use crate::screen::{self, Hold};
@@ -43,23 +57,53 @@ pub enum Message {
     ScreenHeld(Hold),
     LaunchUrl(String),
     ToggleAbout,
+    /// Keep the selected pass, which was opened from a file, in the wallet.
+    Add,
+    /// Choose `.pkpass` files to add to the wallet.
+    ChooseFiles,
+    /// Add these files to the wallet: chosen in the dialog, or dropped on
+    /// the window. None when the dialog was dismissed.
+    Import(Vec<PathBuf>),
+    /// A drag carrying files is over the window, or has left it.
+    Dragging(bool),
+    /// Files were dropped on the window, as a `text/uri-list`.
+    Dropped(Vec<u8>),
+    /// Files were dropped by a sandboxed application, which hands over a
+    /// document-portal key in place of paths.
+    DroppedThroughPortal(String),
+    /// Ask before removing the selected pass from the wallet.
+    AskRemove,
+    /// Remove it.
+    Remove,
+    /// Leave it.
+    CancelRemove,
+    /// Something to say that is not about one pass: the file dialog failed.
+    Notice(String),
 }
 
 pub struct AppModel {
     core: Core,
     about: About,
     nav: nav_bar::Model,
-    /// Everything the store holds, in its own order. The sidebar filters this
-    /// rather than reloading, so switching rows costs no disk read.
+    /// The wallet. `None` when it could not be opened; `fatal` says why.
+    store: Option<PassStore>,
+    /// The passes opened from files, then everything the store holds in its
+    /// own order. The sidebar filters this rather than reloading, so switching
+    /// rows costs no disk read.
     passes: Vec<StoredPass>,
-    /// Passes on disk that would not parse. Surfaced rather than dropped — a
-    /// wallet that silently shows fewer passes than the directory holds is
-    /// the failure a traveller finds at the gate.
+    /// Passes in the store that would not parse. Surfaced rather than dropped
+    /// — a wallet that silently shows fewer passes than the directory holds
+    /// is the failure a traveller finds at the gate.
     unreadable: Vec<UnreadablePass>,
-    /// How many of `passes`, from the front, were opened from files named on
-    /// the command line rather than read from the store. They are shown, not
-    /// kept: import needs the crash-safe writer (ROADMAP milestone 3).
-    opened: usize,
+    /// Files that were opened, or chosen to be added, and would not read: by
+    /// name, with the reason. A file the user pointed at must not vanish
+    /// without a word.
+    unreadable_files: Vec<UnreadablePass>,
+    /// The bytes of each pass shown from a file, in the order they lead
+    /// `passes`. Kept so that Add to wallet stores exactly what was shown.
+    shown: Vec<Vec<u8>>,
+    /// A drag carrying files is over the window.
+    dragging: bool,
     /// Index into `passes`, not into the filtered view: the filter changes,
     /// the selection should not follow it to a different pass.
     selected: Option<usize>,
@@ -76,6 +120,10 @@ pub struct AppModel {
     /// Set when the store itself could not be opened, which is a different
     /// condition from an empty wallet and reads differently to the user.
     fatal: Option<String>,
+    /// What the last change to the wallet did, or why it did not happen.
+    notice: Option<String>,
+    /// The stored pass the user has been asked about removing, by its id.
+    removing: Option<String>,
 }
 
 impl AppModel {
@@ -144,8 +192,9 @@ impl AppModel {
     /// One line per pass that would not read: which one, and why. A count
     /// alone does not say *which* boarding pass is broken.
     fn unreadable_lines(&self) -> Vec<String> {
-        self.unreadable
+        self.unreadable_files
             .iter()
+            .chain(&self.unreadable)
             .map(|failure| {
                 fl!(
                     "unreadable-pass",
@@ -160,15 +209,227 @@ impl AppModel {
         let Some(pass) = self.selected_pass() else {
             return widget::text::body(fl!("select-a-pass")).into();
         };
+        let spacing = cosmic::theme::spacing();
         let face = crate::face::view(pass, self.symbol.as_ref(), now());
-        if self.selected.is_some_and(|index| index < self.opened) {
+        // Above a pass that is only being shown: that it is not kept, and the
+        // way to keep it. Below one that is kept: the way to stop.
+        if self.selected.is_some_and(|index| index < self.opened()) {
             return widget::column::with_capacity(2)
-                .spacing(cosmic::theme::spacing().space_xs)
-                .push(widget::text::caption(fl!("opened-from-file")))
+                .spacing(spacing.space_xs)
+                .push(
+                    widget::row::with_capacity(2)
+                        .spacing(spacing.space_s)
+                        .align_y(cosmic::iced::Alignment::Center)
+                        .push(widget::text::caption(fl!("opened-from-file")).width(Length::Fill))
+                        .push(
+                            widget::button::suggested(fl!("add-to-wallet")).on_press(Message::Add),
+                        ),
+                )
                 .push(face)
                 .into();
         }
-        face
+        widget::column::with_capacity(2)
+            .spacing(spacing.space_xs)
+            .push(face)
+            .push(
+                widget::button::destructive(fl!("remove-from-wallet")).on_press(Message::AskRemove),
+            )
+            .into()
+    }
+
+    /// How many of `passes`, from the front, are only being shown.
+    fn opened(&self) -> usize {
+        self.shown.len()
+    }
+
+    /// The selected pass, when it is one the store holds.
+    fn selected_stored(&self) -> Option<&StoredPass> {
+        self.selected
+            .filter(|index| *index >= self.opened())
+            .and_then(|index| self.passes.get(index))
+    }
+
+    /// Selects the stored pass at `path`, or nothing when there is none.
+    fn select_stored(&mut self, path: Option<&Path>) {
+        let index = path.and_then(|path| {
+            self.passes
+                .iter()
+                .skip(self.opened())
+                .position(|stored| stored.path == path)
+                .map(|index| index + self.opened())
+        });
+        match index {
+            Some(index) => self.select(index),
+            None => {
+                self.selected = None;
+                self.symbol = None;
+            }
+        }
+    }
+
+    /// Reads the store again, keeping the passes being shown and the
+    /// selection.
+    fn reload(&mut self) {
+        let opened = self.opened();
+        let kept = self
+            .selected
+            .filter(|index| *index >= opened)
+            .and_then(|index| self.passes.get(index))
+            .map(|stored| stored.path.clone());
+        let Listing { passes, unreadable } =
+            self.store.as_ref().map_or_else(Listing::default, list);
+        self.passes.truncate(opened);
+        self.passes.extend(passes);
+        self.unreadable = unreadable;
+        if self.selected.is_some_and(|index| index >= opened) {
+            self.select_stored(kept.as_deref());
+        }
+    }
+
+    /// Shows the passes in `files` without keeping them — a `.pkpasses`
+    /// bundle shows each pass it holds — and, when `select` is set, selects
+    /// the first: it is what the user just asked to see.
+    ///
+    /// A pass already being shown is selected rather than shown twice, and a
+    /// file or bundled pass that will not read is named with the reason.
+    fn show(&mut self, files: &[PathBuf], select: bool) {
+        let mut arrived: Vec<(StoredPass, Vec<u8>)> = Vec::new();
+        let mut again = None;
+        for file in files {
+            let (passes, unreadable) = open_file(file);
+            self.unreadable_files.extend(unreadable);
+            for (stored, bytes) in passes {
+                if let Some(index) = self.shown.iter().position(|shown| *shown == bytes) {
+                    again.get_or_insert(index);
+                } else if !arrived.iter().any(|(_, other)| *other == bytes) {
+                    arrived.push((stored, bytes));
+                }
+            }
+        }
+
+        let count = arrived.len();
+        for (stored, bytes) in arrived.into_iter().rev() {
+            self.passes.insert(0, stored);
+            self.shown.insert(0, bytes);
+        }
+        // Everything already listed moved down by what arrived.
+        self.selected = self.selected.map(|index| index + count);
+        if !select {
+            return;
+        }
+        if count > 0 {
+            self.select(0);
+        } else if let Some(index) = again {
+            self.select(index);
+        }
+    }
+
+    /// Stores each of `passes` in the wallet, saying for each what happened.
+    fn keep(&self, passes: Vec<Vec<u8>>) -> Vec<Result<(StoredPass, Added), String>> {
+        let Some(store) = &self.store else {
+            return vec![Err(fl!("no-wallet"))];
+        };
+        passes
+            .into_iter()
+            .map(|bytes| store.add(&bytes).map_err(|why| why.to_string()))
+            .collect()
+    }
+
+    /// Adds the selected pass, which is being shown from a file, to the
+    /// wallet.
+    ///
+    /// What is stored is what was on screen, byte for byte, even if the file
+    /// has changed or gone since. Once kept it is the stored pass that is
+    /// shown and selected.
+    fn add_selected(&mut self) {
+        let Some(index) = self.selected.filter(|index| *index < self.opened()) else {
+            return;
+        };
+        let bytes = self.shown[index].clone();
+        let name = self.passes[index].id.clone();
+        match self.keep(vec![bytes]).remove(0) {
+            Ok((stored, outcome)) => {
+                self.passes.remove(index);
+                self.shown.remove(index);
+                self.selected = None;
+                self.reload();
+                self.select_stored(Some(&stored.path));
+                self.notice = Some(added(outcome));
+            }
+            Err(reason) => {
+                self.notice = Some(fl!("add-failed", name = name, reason = reason));
+            }
+        }
+    }
+
+    /// Adds files to the wallet — chosen in the dialog or dropped on the
+    /// window — and selects the last pass added. A `.pkpasses` bundle adds
+    /// every pass it holds. What cannot be added is named with the reason and
+    /// does not stop the rest.
+    fn import(&mut self, files: &[PathBuf]) {
+        if files.is_empty() {
+            return;
+        }
+        let mut last = None;
+        let mut outcomes = Vec::new();
+        for file in files {
+            let passes = read_file(file).and_then(|bytes| {
+                pocket_core::pkpass::split(&bytes).map_err(|why| why.to_string())
+            });
+            let passes = match passes {
+                Ok(passes) => passes,
+                Err(reason) => {
+                    self.unreadable_files.push(UnreadablePass {
+                        id: name_of(file),
+                        reason,
+                    });
+                    continue;
+                }
+            };
+            let bundled = passes.len() > 1;
+            for (index, result) in self.keep(passes).into_iter().enumerate() {
+                match result {
+                    Ok((stored, outcome)) => {
+                        last = Some(stored.path);
+                        outcomes.push(outcome);
+                    }
+                    Err(reason) => self.unreadable_files.push(UnreadablePass {
+                        id: entry_name(file, bundled.then_some(index)),
+                        reason,
+                    }),
+                }
+            }
+        }
+        self.reload();
+        if last.is_some() {
+            self.select_stored(last.as_deref());
+        }
+        self.notice = match outcomes[..] {
+            [] => None,
+            [outcome] => Some(added(outcome)),
+            _ => Some(fl!("added-several", count = outcomes.len())),
+        };
+    }
+
+    /// Removes the pass the user was asked about from the wallet.
+    fn remove(&mut self) {
+        let Some(id) = self.removing.take() else {
+            return;
+        };
+        let Some(store) = &self.store else {
+            return;
+        };
+        let name = self
+            .passes
+            .iter()
+            .skip(self.opened())
+            .find(|stored| stored.id == id)
+            .map_or_else(|| id.clone(), |stored| stored.pass.title().to_owned());
+        self.notice = Some(match store.remove(&id) {
+            Ok(()) => fl!("removed", name = name),
+            Err(why) => fl!("remove-failed", name = name, reason = why.to_string()),
+        });
+        self.reload();
     }
 
     /// Selects a pass and encodes its barcode, once.
@@ -220,35 +481,111 @@ impl AppModel {
 /// and a file of any size is never loaded whole just to be refused.
 const OPEN_FILE_LIMIT: u64 = 64 * 1024 * 1024 + 1;
 
-/// Reads the `.pkpass` files named on the command line, for showing.
-///
-/// Each becomes a pass, or an unreadable entry naming the file and saying
-/// why: a file the user explicitly opened must not vanish without a word.
-fn open_files(files: &[PathBuf]) -> (Vec<StoredPass>, Vec<UnreadablePass>) {
+/// The bytes of a file somebody pointed at, up to [`OPEN_FILE_LIMIT`].
+fn read_file(path: &Path) -> Result<Vec<u8>, String> {
     use std::io::Read as _;
 
-    let mut passes = Vec::new();
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(OPEN_FILE_LIMIT).read_to_end(&mut bytes))
+        .map_err(|why| why.to_string())?;
+    Ok(bytes)
+}
+
+/// What a file is called in the list: its name, not the path to it.
+fn name_of(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+/// What a pass from `file` is called in the list: the file's name, and for
+/// a pass out of a bundle, which one.
+fn entry_name(file: &Path, bundled: Option<usize>) -> String {
+    match bundled {
+        Some(index) => format!("{} ({})", name_of(file), index + 1),
+        None => name_of(file),
+    }
+}
+
+/// Reads a `.pkpass` or `.pkpasses` file for showing: each pass it holds,
+/// with the bytes it was read from, and what would not read.
+///
+/// A file the user explicitly opened must not vanish without a word, and one
+/// broken pass in a bundle does not hide the others.
+fn open_file(path: &Path) -> (Vec<(StoredPass, Vec<u8>)>, Vec<UnreadablePass>) {
+    let passes = match read_file(path)
+        .and_then(|bytes| pocket_core::pkpass::split(&bytes).map_err(|why| why.to_string()))
+    {
+        Ok(passes) => passes,
+        Err(reason) => {
+            return (
+                Vec::new(),
+                vec![UnreadablePass {
+                    id: name_of(path),
+                    reason,
+                }],
+            );
+        }
+    };
+    let bundled = passes.len() > 1;
+    let mut shown = Vec::new();
     let mut unreadable = Vec::new();
-    for path in files {
-        let mut bytes = Vec::new();
-        let read = std::fs::File::open(path)
-            .and_then(|file| file.take(OPEN_FILE_LIMIT).read_to_end(&mut bytes))
-            .map_err(|why| why.to_string())
-            .and_then(|_| pocket_core::pkpass::read(&bytes).map_err(|why| why.to_string()));
-        let id = path.file_name().map_or_else(
-            || path.display().to_string(),
-            |name| name.to_string_lossy().into_owned(),
-        );
-        match read {
-            Ok(pass) => passes.push(StoredPass {
+    for (index, bytes) in passes.into_iter().enumerate() {
+        let id = entry_name(path, bundled.then_some(index));
+        match pocket_core::pkpass::read(&bytes) {
+            Ok(pass) => shown.push((
+                StoredPass {
+                    id,
+                    path: path.to_path_buf(),
+                    pass,
+                },
+                bytes,
+            )),
+            Err(why) => unreadable.push(UnreadablePass {
                 id,
-                path: path.clone(),
-                pass,
+                reason: why.to_string(),
             }),
-            Err(reason) => unreadable.push(UnreadablePass { id, reason }),
         }
     }
-    (passes, unreadable)
+    (shown, unreadable)
+}
+
+/// The local files named in a `text/uri-list`, which is what a file manager
+/// puts on a drag.
+///
+/// Lines starting with `#` are comments (RFC 2483), and anything that is not
+/// a `file:` URL is left out: a pass dragged from a web page is a link, and
+/// fetching it is not something a drop should do unasked.
+fn paths_in_uri_list(data: &[u8]) -> Vec<PathBuf> {
+    String::from_utf8_lossy(data)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| url::Url::parse(line).ok())
+        .filter_map(|url| url.to_file_path().ok())
+        .collect()
+}
+
+/// Everything the store holds, or nothing when it cannot be listed.
+fn list(store: &PassStore) -> Listing {
+    match store.list() {
+        Ok(listing) => listing,
+        Err(why) => {
+            tracing::error!(%why, "cannot list passes");
+            Listing::default()
+        }
+    }
+}
+
+/// What adding a pass did, in words.
+fn added(outcome: Added) -> String {
+    match outcome {
+        Added::New => fl!("added"),
+        Added::Updated => fl!("added-updated"),
+        Added::Unchanged => fl!("added-already"),
+    }
 }
 
 /// The time to judge a pass's expiry by.
@@ -324,20 +661,6 @@ impl cosmic::Application for AppModel {
             .map(|store| store.root().display().to_string())
             .unwrap_or_default();
 
-        let Listing {
-            passes: stored,
-            unreadable: stored_unreadable,
-        } = store
-            .as_ref()
-            .map(|store| match store.list() {
-                Ok(listing) => listing,
-                Err(why) => {
-                    tracing::error!(%why, "cannot list passes");
-                    Listing::default()
-                }
-            })
-            .unwrap_or_default();
-
         let mut nav = nav_bar::Model::default();
         nav.insert()
             .text(label(Filter::All))
@@ -348,31 +671,66 @@ impl cosmic::Application for AppModel {
             nav.insert().text(label(filter)).data(filter);
         }
 
-        // Files handed over by the file manager come first and the first of
-        // them is selected: it is what the user just asked to see.
-        let (mut passes, mut unreadable) = open_files(&files);
-        let opened = passes.len();
-        passes.extend(stored);
-        unreadable.extend(stored_unreadable);
-
         let mut app = Self {
             core,
             about,
             nav,
-            passes,
-            unreadable,
-            opened,
+            store,
+            passes: Vec::new(),
+            unreadable: Vec::new(),
+            unreadable_files: Vec::new(),
+            shown: Vec::new(),
+            dragging: false,
             selected: None,
             symbol: None,
             presenting: false,
             hold: Hold::default(),
             root,
             fatal,
+            notice: None,
+            removing: None,
         };
-        if opened > 0 {
-            app.select(0);
-        }
+        app.reload();
+        // Files handed over by the file manager come first and the first of
+        // them is selected: it is what the user just asked to see.
+        app.show(&files, true);
         (app, Task::none())
+    }
+
+    /// The one action the header offers: adding passes to the wallet.
+    fn header_start(&self) -> Vec<Element<'_, Self::Message>> {
+        if self.fatal.is_some() || self.presenting {
+            return Vec::new();
+        }
+        vec![
+            widget::button::text(fl!("add-pass"))
+                .leading_icon(widget::icon::from_name("list-add-symbolic").size(16))
+                .on_press(Message::ChooseFiles)
+                .into(),
+        ]
+    }
+
+    /// Removing a pass deletes a file that may exist nowhere else, so it is
+    /// asked about first.
+    fn dialog(&self) -> Option<Element<'_, Self::Message>> {
+        let id = self.removing.as_ref()?;
+        let stored = self
+            .passes
+            .iter()
+            .skip(self.opened())
+            .find(|stored| &stored.id == id)?;
+        Some(
+            widget::dialog()
+                .title(fl!("remove-title", name = stored.pass.title().to_owned()))
+                .body(fl!("remove-body"))
+                .primary_action(
+                    widget::button::destructive(fl!("remove")).on_press(Message::Remove),
+                )
+                .secondary_action(
+                    widget::button::text(fl!("cancel")).on_press(Message::CancelRemove),
+                )
+                .into(),
+        )
     }
 
     fn nav_model(&self) -> Option<&nav_bar::Model> {
@@ -427,22 +785,28 @@ impl cosmic::Application for AppModel {
             return crate::presenter::view(pass, symbol);
         }
 
-        let mut left = widget::column::with_capacity(4)
+        let mut left = widget::column::with_capacity(5)
             .spacing(spacing.space_xs)
             .push(widget::text::caption(fl!(
                 "passes-count",
                 count = self.passes.len()
             )));
+        if self.dragging {
+            left = left.push(widget::text::body(fl!("drop-to-add")));
+        } else if let Some(notice) = &self.notice {
+            left = left.push(widget::text::body(notice.clone()));
+        }
         if self.passes.is_empty() {
             left = left.push(widget::text::body(fl!(
                 "no-passes-detail",
                 path = self.root.clone()
             )));
         }
-        if !self.unreadable.is_empty() {
+        let unreadable = self.unreadable.len() + self.unreadable_files.len();
+        if unreadable > 0 {
             left = left.push(widget::text::caption(fl!(
                 "unreadable-passes",
-                count = self.unreadable.len()
+                count = unreadable
             )));
             for line in self.unreadable_lines() {
                 left = left.push(widget::text::caption(line));
@@ -450,7 +814,7 @@ impl cosmic::Application for AppModel {
         }
         left = left.push(self.list());
 
-        widget::row::with_capacity(3)
+        let content = widget::row::with_capacity(3)
             .spacing(spacing.space_s)
             .padding(spacing.space_s)
             .push(left.width(Length::FillPortion(2)))
@@ -459,13 +823,74 @@ impl cosmic::Application for AppModel {
                 widget::container(self.detail())
                     .width(Length::FillPortion(3))
                     .height(Length::Fill),
-            )
+            );
+        // The whole window takes a drop: a wallet has one thing to do with a
+        // file, so there is no wrong place to let go of it. A sandboxed
+        // application hands over a portal key rather than paths.
+        widget::dnd_destination(content, vec![std::borrow::Cow::Borrowed("text/uri-list")])
+            .on_enter(|_, _, _| Message::Dragging(true))
+            .on_leave(|| Message::Dragging(false))
+            .on_finish(|_mime, data, _action, _, _| Message::Dropped(data))
+            .on_file_transfer(Message::DroppedThroughPortal)
             .into()
     }
 
     fn update(&mut self, message: Self::Message) -> Task<Self::Message> {
         match message {
-            Message::Select(index) => self.select(index),
+            Message::Select(index) => {
+                // What the last change did has been read by now.
+                self.notice = None;
+                self.select(index);
+            }
+            Message::Add => self.add_selected(),
+            Message::ChooseFiles => {
+                return cosmic::task::future(async {
+                    use cosmic::dialog::file_chooser::{self, FileFilter};
+
+                    let dialog = file_chooser::open::Dialog::new()
+                        .title(fl!("add-pass"))
+                        .filter(
+                            FileFilter::new(&fl!("pass-files"))
+                                .glob("*.pkpass")
+                                .glob("*.pkpasses"),
+                        );
+                    match dialog.open_files().await {
+                        Ok(response) => Message::Import(
+                            response
+                                .urls()
+                                .iter()
+                                .filter_map(|url| url.to_file_path().ok())
+                                .collect(),
+                        ),
+                        // A dismissed dialog is an answer, not a failure.
+                        Err(file_chooser::Error::Cancelled) => Message::Import(Vec::new()),
+                        Err(why) => Message::Notice(why.to_string()),
+                    }
+                });
+            }
+            Message::Import(files) => self.import(&files),
+            Message::Dragging(dragging) => self.dragging = dragging,
+            Message::Dropped(data) => {
+                self.dragging = false;
+                self.import(&paths_in_uri_list(&data));
+            }
+            Message::DroppedThroughPortal(key) => {
+                self.dragging = false;
+                return cosmic::command::file_transfer_receive(key).map(|received| {
+                    cosmic::Action::App(match received {
+                        Ok(files) => {
+                            Message::Import(files.into_iter().map(PathBuf::from).collect())
+                        }
+                        Err(why) => Message::Notice(why.to_string()),
+                    })
+                });
+            }
+            Message::AskRemove => {
+                self.removing = self.selected_stored().map(|stored| stored.id.clone());
+            }
+            Message::Remove => self.remove(),
+            Message::CancelRemove => self.removing = None,
+            Message::Notice(notice) => self.notice = Some(notice),
             Message::Present => {
                 if self.presentable().is_some() {
                     return self.present(true);
@@ -511,16 +936,250 @@ mod tests {
             core: Core::default(),
             about: About::default(),
             nav: nav_bar::Model::default(),
+            store: None,
             passes: Vec::new(),
             unreadable: Vec::new(),
-            opened: 0,
+            unreadable_files: Vec::new(),
+            shown: Vec::new(),
+            dragging: false,
             selected: None,
             symbol: None,
             presenting: false,
             hold: Hold::default(),
             root: String::new(),
             fatal: None,
+            notice: None,
+            removing: None,
         }
+    }
+
+    /// An application over a wallet in `dir`, which starts empty.
+    fn app_with_wallet(dir: &Path) -> AppModel {
+        let mut app = app();
+        app.store = Some(PassStore::open(dir.join("passes")));
+        app.reload();
+        app
+    }
+
+    /// A boarding pass file in `dir`, as a file manager would hand it over.
+    fn pass_file(dir: &Path, name: &str, serial: &str, gate: &str) -> PathBuf {
+        let path = dir.join(name);
+        let json = format!(
+            r#"{{"passTypeIdentifier":"pass.com.example.air","serialNumber":"{serial}",
+                "organizationName":"Example Air","logoText":"Gate {gate}","boardingPass":{{}}}}"#
+        );
+        std::fs::write(&path, pkpass(&json)).unwrap();
+        path
+    }
+
+    /// Add to wallet: the pass that was only being shown is stored, and what
+    /// is selected afterwards is the stored pass, not the file. Adding it a
+    /// second time leaves one pass in the wallet.
+    #[test]
+    fn a_pass_opened_from_a_file_is_kept_once_it_is_added() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let file = pass_file(dir.path(), "flight.pkpass", "A1", "1");
+        app.show(std::slice::from_ref(&file), true);
+
+        let _ = app.update(Message::Add);
+        assert_eq!(app.opened(), 0, "the file is still shown beside the pass");
+        assert_eq!(app.passes.len(), 1);
+        let kept = &app.passes[app.selected.expect("the added pass is selected")];
+        assert!(kept.path.starts_with(dir.path().join("passes")));
+        assert_eq!(
+            std::fs::read(&kept.path).unwrap(),
+            std::fs::read(&file).unwrap(),
+            "the pass was not stored byte for byte"
+        );
+        assert_eq!(app.notice, Some(fl!("added")));
+
+        app.show(std::slice::from_ref(&file), true);
+        let _ = app.update(Message::Add);
+        assert_eq!(app.passes.len(), 1, "the same pass is in the wallet twice");
+        assert_eq!(app.notice, Some(fl!("added-already")));
+
+        // The issuer's re-send, with a new gate: the same pass, replaced.
+        let resent = pass_file(dir.path(), "resent.pkpass", "A1", "7");
+        app.show(std::slice::from_ref(&resent), true);
+        let _ = app.update(Message::Add);
+        assert_eq!(app.passes.len(), 1);
+        assert_eq!(app.passes[0].pass.logo_text.as_deref(), Some("Gate 7"));
+        assert_eq!(app.notice, Some(fl!("added-updated")));
+    }
+
+    /// What Add to wallet keeps is what was shown, even when the file has
+    /// changed since; a pass the wallet cannot take says why and stays on
+    /// show.
+    #[test]
+    fn add_keeps_the_pass_that_was_shown_and_says_when_it_cannot() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let file = pass_file(dir.path(), "flight.pkpass", "A1", "1");
+        let shown = std::fs::read(&file).unwrap();
+        app.show(std::slice::from_ref(&file), true);
+        std::fs::write(&file, b"no longer a pass").unwrap();
+
+        let _ = app.update(Message::Add);
+        assert_eq!(app.opened(), 0);
+        let kept = &app.passes[app.selected.unwrap()];
+        assert_eq!(std::fs::read(&kept.path).unwrap(), shown);
+
+        // A wallet that cannot be written to: its folder is a file.
+        let blocked = dir.path().join("blocked");
+        std::fs::write(&blocked, b"").unwrap();
+        app.store = Some(PassStore::open(&blocked));
+        let other = pass_file(dir.path(), "other.pkpass", "B2", "2");
+        app.show(std::slice::from_ref(&other), true);
+        let _ = app.update(Message::Add);
+        assert_eq!(app.opened(), 1, "a pass that was not kept left the list");
+        assert!(app.notice.as_deref().unwrap().contains("other.pkpass"));
+    }
+
+    /// A `.pkpasses` bundle — one booking, two travellers — opened from the
+    /// file manager shows both passes; added, it puts both in the wallet.
+    #[test]
+    fn a_bundle_shows_and_adds_every_pass_in_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let bundle = dir.path().join("family.pkpasses");
+        std::fs::write(
+            &bundle,
+            zipped(&[
+                (
+                    "Traveller-1.pkpass",
+                    std::fs::read(pass_file(dir.path(), "a.pkpass", "A1", "1")).unwrap(),
+                ),
+                (
+                    "Traveller-2.pkpass",
+                    std::fs::read(pass_file(dir.path(), "b.pkpass", "A2", "1")).unwrap(),
+                ),
+            ]),
+        )
+        .unwrap();
+
+        app.show(std::slice::from_ref(&bundle), true);
+        assert_eq!(app.opened(), 2);
+        let names: Vec<&str> = app.passes.iter().map(|stored| stored.id.as_str()).collect();
+        assert_eq!(names, ["family.pkpasses (1)", "family.pkpasses (2)"]);
+
+        let _ = app.update(Message::Import(vec![bundle]));
+        let stored: Vec<&str> = app
+            .passes
+            .iter()
+            .skip(app.opened())
+            .map(|stored| stored.pass.serial_number.as_str())
+            .collect();
+        assert_eq!(stored.len(), 2);
+        assert!(stored.contains(&"A1") && stored.contains(&"A2"));
+        assert_eq!(app.notice, Some(fl!("added-several", count = 2)));
+    }
+
+    /// Files dropped on the window go into the wallet; what the drag carried
+    /// that is not a local file is left alone.
+    #[test]
+    fn files_dropped_on_the_window_are_added_to_the_wallet() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let file = pass_file(dir.path(), "my flight.pkpass", "A1", "1");
+        let list = format!(
+            "# from a file manager\r\n{}\r\nhttps://example.test/pass.pkpass\r\n",
+            url::Url::from_file_path(&file).unwrap()
+        );
+        let _ = app.update(Message::Dragging(true));
+
+        let _ = app.update(Message::Dropped(list.into_bytes()));
+        assert!(!app.dragging, "the drop left the window waiting for one");
+        assert_eq!(app.opened(), 0);
+        assert_eq!(app.passes.len(), 1);
+        assert_eq!(app.notice, Some(fl!("added")));
+    }
+
+    #[test]
+    fn a_uri_list_yields_only_its_local_files() {
+        let paths = paths_in_uri_list(
+            b"# a comment\r\nfile:///tmp/a%20b.pkpass\r\n\r\nhttps://example.test/c.pkpass\r\nnot a url\r\nfile:///tmp/d.pkpasses\r\n",
+        );
+        assert_eq!(
+            paths,
+            [
+                PathBuf::from("/tmp/a b.pkpass"),
+                PathBuf::from("/tmp/d.pkpasses")
+            ]
+        );
+    }
+
+    /// "Add pass…": the files chosen go straight into the wallet; one that is
+    /// not a pass is named with the reason and does not stop the others.
+    #[test]
+    fn passes_chosen_in_the_file_dialog_are_added_to_the_wallet() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let good = pass_file(dir.path(), "flight.pkpass", "A1", "1");
+        let other = pass_file(dir.path(), "return.pkpass", "B2", "2");
+        let broken = dir.path().join("broken.pkpass");
+        std::fs::write(&broken, b"not a zip").unwrap();
+
+        let _ = app.update(Message::Import(vec![good, broken, other]));
+        assert_eq!(app.opened(), 0);
+        assert_eq!(app.passes.len(), 2);
+        assert_eq!(
+            app.passes[app.selected.unwrap()].pass.serial_number,
+            "B2",
+            "the last pass added is the one selected"
+        );
+        assert_eq!(app.unreadable_files.len(), 1);
+        assert_eq!(app.unreadable_files[0].id, "broken.pkpass");
+        assert_eq!(app.notice, Some(fl!("added-several", count = 2)));
+
+        // A dismissed dialog changes nothing, the notice included.
+        let _ = app.update(Message::Import(Vec::new()));
+        assert_eq!(app.notice, Some(fl!("added-several", count = 2)));
+    }
+
+    /// Removing a pass asks first. Cancel leaves it; Remove deletes it from
+    /// the store and from the list, and leaves the other passes alone.
+    #[test]
+    fn a_pass_is_removed_from_the_wallet_only_after_being_asked_about() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let _ = app.update(Message::Import(vec![
+            pass_file(dir.path(), "flight.pkpass", "A1", "1"),
+            pass_file(dir.path(), "return.pkpass", "B2", "2"),
+        ]));
+        let doomed = app.passes[app.selected.unwrap()].clone();
+
+        let _ = app.update(Message::AskRemove);
+        assert!(
+            cosmic::Application::dialog(&app).is_some(),
+            "nothing was asked"
+        );
+        let _ = app.update(Message::CancelRemove);
+        assert!(doomed.path.exists(), "a cancelled removal removed the pass");
+        assert_eq!(app.passes.len(), 2);
+
+        let _ = app.update(Message::AskRemove);
+        let _ = app.update(Message::Remove);
+        assert!(!doomed.path.exists());
+        assert_eq!(app.passes.len(), 1);
+        assert_ne!(app.passes[0].id, doomed.id);
+        assert_eq!(app.selected, None);
+        assert!(cosmic::Application::dialog(&app).is_none());
+    }
+
+    /// A pass that is only being shown is not the wallet's to remove: there
+    /// is nothing to ask about.
+    #[test]
+    fn a_pass_opened_from_a_file_cannot_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let file = pass_file(dir.path(), "flight.pkpass", "A1", "1");
+        app.show(std::slice::from_ref(&file), true);
+
+        let _ = app.update(Message::AskRemove);
+        assert_eq!(app.removing, None);
+        let _ = app.update(Message::Remove);
+        assert!(file.exists());
     }
 
     /// Present, then Done before the portal and the settings daemon have
@@ -622,12 +1281,29 @@ mod tests {
         )
         .unwrap();
 
-        let (passes, unreadable) = open_files(&[good.clone(), broken, missing]);
-        assert_eq!(passes.len(), 1);
-        assert_eq!(passes[0].path, good);
-        assert_eq!(passes[0].pass.title(), "Example Air");
-        let ids: Vec<&str> = unreadable.iter().map(|u| u.id.as_str()).collect();
+        let mut app = app();
+        app.show(&[good.clone(), broken, missing], true);
+        assert_eq!(app.opened(), 1);
+        assert_eq!(app.passes[0].path, good);
+        assert_eq!(app.passes[0].pass.title(), "Example Air");
+        assert_eq!(app.selected, Some(0), "the opened pass is not selected");
+        let ids: Vec<&str> = app.unreadable_files.iter().map(|u| u.id.as_str()).collect();
         assert_eq!(ids, ["broken.pkpass", "missing.pkpass"]);
+    }
+
+    /// A zip of `files`, as a `.pkpasses` bundle is.
+    fn zipped(files: &[(&str, Vec<u8>)]) -> Vec<u8> {
+        use std::io::Write as _;
+
+        let mut buffer = Vec::new();
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buffer));
+        for (name, content) in files {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(content).unwrap();
+        }
+        zip.finish().unwrap();
+        buffer
     }
 
     /// A `.pkpass` holding `pass_json`, with a manifest the reader accepts.

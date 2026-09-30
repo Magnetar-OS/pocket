@@ -9,7 +9,7 @@ Terminal=false
 Type=Application
 StartupNotify=true
 StartupWMClass=com.magnetaros.Pocket
-MimeType=application/vnd.apple.pkpass;
+MimeType=application/vnd.apple.pkpass;application/vnd.apple.pkpasses;
 Keywords=wallet;pass;passes;pkpass;boarding;ticket;barcode;loyalty;card;coupon;
 # Deliberately NOT DBusActivatable, for the reason spelled out in Slate's and
 # Circle's desktop entries: libcosmic's run_single_instance claims the bus name
@@ -19,5 +19,4 @@ Keywords=wallet;pass;passes;pkpass;boarding;ticket;barcode;loyalty;card;coupon;
 # The Exec line reaches the same place.
 # %F, not %U: Pocket reads local files, and with %F the file manager hands over
 # paths (mounting a remote file first) instead of URLs. A pass opened this way
-# is shown, not added to the wallet; import arrives with the crash-safe writer
-# (ROADMAP milestone 3).
+# is shown; "Add to wallet" keeps it. A .pkpasses bundle is every pass in it.

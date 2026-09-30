@@ -58,6 +58,10 @@ ashpd = "0.12.3"
 # not carry the `MaxDisplayBrightness` property the presenter needs.
 zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
 
+# `file://` URLs: what a file manager puts on a drag (`text/uri-list`). Already
+# in the graph through libcosmic.
+url = "2"
+
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic.git"
 features = [
@@ -68,7 +72,7 @@ features = [
     "single-instance",
     # GPU-accelerated rendering.
     "wgpu",
-    # Native file dialogs, for importing a `.pkpass` or a PDF ticket.
+    # The portal's file dialog, for "Add pass…".
     "xdg-portal",
 ]
 

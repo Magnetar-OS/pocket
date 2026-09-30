@@ -8,9 +8,9 @@ the `.pkpass` files they arrived in, and presented with their barcodes ready to
 scan.
 
 **This is early.** The pass model, the PKPass reader and the on-disk store work
-and are tested, and a pass can now be scanned off the screen: all four PassKit
-symbologies render, and there is a full-screen presenter. Passes still have to
-be put in the directory by hand, and their signatures are still not verified;
+and are tested, a pass can be scanned off the screen — all four PassKit
+symbologies render, and there is a full-screen presenter — and a pass can be
+added to the wallet and removed from it. Signatures are still not verified;
 see [Status](#status) for the honest line and [ROADMAP.md](ROADMAP.md) for the
 rest.
 
@@ -76,6 +76,16 @@ Working and tested:
 - **The pass face**: the issuer's colours and logo text, and the field layout
   each of the five styles specifies — a boarding pass shows origin and
   destination side by side, and the back of the pass is shown below.
+- **Adding and removing.** "Open with Pocket" in a file manager shows a
+  `.pkpass`, and **Add to wallet** keeps it. **Add pass…** in the header adds
+  the files chosen in a dialog, and files dropped on the window are added the
+  same way. A `.pkpasses` bundle — several travellers on one booking — is
+  every pass it holds, each read within the same limits as a single pass.
+  Either way the pass is verified first and then stored byte for byte,
+  atomically, through the substrate's crash-safe writer
+  (`cosmic_pim_core::atomic`). A pass is one pass however often it is added:
+  the same type identifier and serial number replace the stored copy instead
+  of duplicating it. **Remove from wallet** deletes one, after asking.
 - A COSMIC application that lists passes by style and shows the selected one
 
 Not done, and not pretended otherwise:
@@ -84,12 +94,6 @@ Not done, and not pretended otherwise:
   they do not prove a pass came from the issuer it names. The WWDR chain is
   public so the check is implementable — a function returning "valid" without
   doing it would be worse than its absence.
-- **There is no import.** A `.pkpass` has to be copied into the pass directory
-  by hand to stay; importing one needs a crash-safe writer, and that writer
-  already exists as `cosmic_pim_core::atomic`. It arrives with the substrate
-  dependency rather than being written a second time here. Opening a
-  `.pkpass` from the file manager shows it, barcode and all, without keeping
-  it.
 - No extraction from mail or PDFs, no calendar writing, no Locket client, no
   applet, no launcher or `peek` plugin.
 
@@ -105,8 +109,8 @@ just run-sandboxed
 ```
 
 That builds and runs against `/tmp/pocket-passes` via `POCKET_PASS_DIR`,
-so it leaves the real wallet alone. Drop a `.pkpass` into
-`/tmp/pocket-passes/<any-name>/pass.pkpass` and restart.
+so it leaves the real wallet alone. Add a `.pkpass` with **Add pass…**, or
+open one with `pocket flight.pkpass`.
 
 ## Building
 

@@ -3,12 +3,13 @@
 Dependency-ordered, not dated. Each milestone says what it is done when, so a
 milestone can be argued with rather than merely postponed.
 
-Milestone 1 is done except for import, which the milestone itself defers to the
-cosmic-pim dependency in milestone 3. All four symbologies render and scan, the
-declared `messageEncoding` is obeyed, there is a full-screen presenter that
-holds the screen awake and bright, and a pass is drawn in its issuer's colours
-with the layout its style specifies. From milestone 2, expiry and voiding are
-surfaced; the rest from milestone 2 down is open.
+Milestone 1 is done. All four symbologies render and scan, the declared
+`messageEncoding` is obeyed, there is a full-screen presenter that holds the
+screen awake and bright, a pass is drawn in its issuer's colours with the
+layout its style specifies, and a pass can be imported — from the file manager
+or a file dialog — and removed. From milestone 2, expiry and voiding are
+surfaced, and from milestone 3 the dependency on cosmic-pim's crash-safe
+writer is in, because import needed it; the rest from milestone 2 down is open.
 
 ## Milestone 1 — a pass you can actually use
 
@@ -26,8 +27,8 @@ milestone that makes the application worth opening.
   of the UI with a hard external requirement — a gate reader either reads the
   display or it does not.
 - **Import.** Open a `.pkpass` from the file manager (the `MimeType=` line is
-  already registered) and from a file dialog. Needs the crash-safe writer, so
-  it arrives with the cosmic-pim dependency below.
+  already registered) and from a file dialog. Needs the crash-safe writer,
+  which is cosmic-pim's.
 - **The pass face.** Issuer colours, logo text, the field layout each of the
   five styles specifies, and the back of the pass.
 
@@ -37,12 +38,13 @@ successfully off the laptop screen by a real reader.
 **Where this stands.** Rendering, `messageEncoding`, the presenter and the pass
 face are implemented, and screenshots of the running application decode back to
 the exact message the issuer wrote in all four symbologies — which is the whole
-of the criterion above except the reader itself. **Import is not implemented**:
-by this milestone's own note it needs the crash-safe writer, and that writer is
-`cosmic_pim_core::atomic`, which arrives with the cosmic-pim dependency in
-milestone 3 rather than being written a second time here.
-Until then, "Open with Pocket" on a `.pkpass` shows the pass — face, barcode
-and presenter — without adding it to the wallet.
+of the criterion above except the reader itself. Import is implemented:
+"Open with Pocket" on a `.pkpass` shows the pass and **Add to wallet** keeps
+it; **Add pass…**
+adds files chosen in a dialog. `PassStore::add` verifies the archive, then
+writes it verbatim through `cosmic_pim_core::atomic` rather than a second
+writer here, and replaces an earlier copy of the same pass (type identifier
+and serial number) instead of keeping two. **Remove from wallet** deletes one.
 
 ## Milestone 2 — verification that means something
 
