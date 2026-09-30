@@ -16,9 +16,12 @@ That split is what lets a second front end — or a headless caller — use it.
   signed `manifest.json` by SHA-1 digest, and rejects a pass whose bytes were
   appended to or altered after signing. It reads within limits — 1024 entries,
   16 MiB a file, 64 MiB in all — so a zip bomb or a header that lies about its
-  size is an error, not an exhausted process.
+  size is an error, not an exhausted process. `split` opens a `.pkpasses`
+  bundle into the passes it holds, within the same limits.
 - **The store** — an on-disk directory of passes, read without hiding a corrupt
-  neighbour behind an error.
+  neighbour behind an error. `add` verifies a pass and stores it verbatim and
+  atomically, replacing an earlier copy of the same pass (by type identifier
+  and serial number) rather than keeping two; `remove` takes one out.
 - **The barcodes** — all four symbologies PassKit defines (QR, Aztec, PDF417
   and Code 128), encoded with the character set `messageEncoding` names, quiet
   zone included.

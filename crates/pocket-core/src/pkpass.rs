@@ -135,6 +135,40 @@ pub fn authentication_token(bytes: &[u8]) -> Result<Option<String>, Error> {
         .map(ToOwned::to_owned))
 }
 
+/// The passes a file holds: one for a `.pkpass`, several for a `.pkpasses`
+/// bundle.
+///
+/// A bundle is what an airline sends for a family booking — a zip whose
+/// entries are themselves `.pkpass` archives. Which of the two a file is, is
+/// decided by what is inside it rather than by its name: a download manager
+/// renames files, and a mail client saves an attachment under whatever the
+/// sender called it.
+///
+/// The bundle is read within the same limits as a pass — so no entry can be
+/// larger than a pass may be, and the whole no larger than a pass may be —
+/// and each pass it yields is still unread: hand it to [`read`], or to
+/// `PassStore::add`, where it is verified within those limits again.
+///
+/// # Errors
+///
+/// Returns [`Error`] when the archive will not open, breaks a limit, or holds
+/// neither a `pass.json` nor any `.pkpass`.
+pub fn split(bytes: &[u8]) -> Result<Vec<Vec<u8>>, Error> {
+    let files = read_all(bytes)?;
+    if files.contains_key("pass.json") {
+        return Ok(vec![bytes.to_vec()]);
+    }
+    let passes: Vec<Vec<u8>> = files
+        .into_iter()
+        .filter(|(name, _)| name.to_ascii_lowercase().ends_with(".pkpass"))
+        .map(|(_, pass)| pass)
+        .collect();
+    if passes.is_empty() {
+        return Err(Error::Missing("pass.json"));
+    }
+    Ok(passes)
+}
+
 /// A limit an archive broke, as the [`Error::Read`] it is reported as.
 fn refused(file: &str, why: String) -> Error {
     Error::Read {
@@ -540,6 +574,92 @@ pub(crate) mod tests {
         assert_eq!(relevant.to_rfc3339(), "2026-09-20T06:40:00+03:00");
         let expiry = pass.expiration_date.expect("the expiry is read");
         assert_eq!(expiry.to_rfc3339(), "2026-09-20T12:00:00+00:00");
+    }
+
+    /// A `.pkpasses` bundle holding `passes`, named as an airline names them.
+    pub(crate) fn bundle(passes: &[Vec<u8>]) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut buffer));
+            for (index, pass) in passes.iter().enumerate() {
+                zip.start_file(
+                    format!("BoardingPass-{index}.pkpass"),
+                    SimpleFileOptions::default(),
+                )
+                .unwrap();
+                zip.write_all(pass).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        buffer
+    }
+
+    /// [`BOARDING`] under another serial number: another traveller.
+    pub(crate) fn boarding_with_serial(serial: &str) -> Vec<u8> {
+        let mut json: serde_json::Value = serde_json::from_str(BOARDING).unwrap();
+        json["serialNumber"] = serial.into();
+        pkpass(&[("pass.json", json.to_string().as_bytes())])
+    }
+
+    #[test]
+    fn a_single_pass_splits_into_itself() {
+        let pass = pkpass(&[("pass.json", BOARDING.as_bytes())]);
+        assert_eq!(split(&pass).unwrap(), [pass]);
+    }
+
+    /// One booking, two travellers: the airline sends one `.pkpasses`.
+    #[test]
+    fn a_bundle_splits_into_the_passes_it_holds() {
+        let passes = [boarding_with_serial("A-1"), boarding_with_serial("A-2")];
+        let split = split(&bundle(&passes)).unwrap();
+        let mut serials: Vec<String> = split
+            .iter()
+            .map(|bytes| read(bytes).unwrap().serial_number)
+            .collect();
+        serials.sort();
+        assert_eq!(serials, ["A-1", "A-2"]);
+    }
+
+    /// A zip of holiday photos renamed `.pkpass` says what is wrong with it,
+    /// rather than yielding nothing and passing for success.
+    #[test]
+    fn an_archive_holding_no_pass_at_all_is_an_error() {
+        let not_a_pass = pkpass(&[("photo.png", b"png")]);
+        assert!(matches!(
+            split(&not_a_pass),
+            Err(Error::Missing("pass.json"))
+        ));
+    }
+
+    /// The limits hold for every pass in a bundle, at both levels: an entry
+    /// that decompresses past a pass's own limit is refused by the bundle's
+    /// reader, and a pass inside whose header lies about its size is refused
+    /// when that pass is read.
+    #[test]
+    fn a_bundle_is_held_to_the_same_limits_as_the_passes_in_it() {
+        use std::io::ErrorKind;
+
+        let limited = |error: Error| matches!(error, Error::Read { source, .. } if source.kind() == ErrorKind::FileTooLarge);
+
+        let mut oversized = Vec::new();
+        {
+            let mut zip = zip::ZipWriter::new(Cursor::new(&mut oversized));
+            zip.start_file("Huge.pkpass", SimpleFileOptions::default())
+                .unwrap();
+            // Zeros deflate to almost nothing: small to carry, too large to
+            // hold once opened.
+            zip.write_all(&vec![0; usize::try_from(MAX_ENTRY_BYTES).unwrap() + 1])
+                .unwrap();
+            zip.finish().unwrap();
+        }
+        assert!(split(&oversized).is_err_and(limited));
+
+        let lying = lying_archive("pass.json", BOARDING.as_bytes(), 1 << 40);
+        let passes = split(&bundle(&[boarding_with_serial("A-1"), lying])).unwrap();
+        assert_eq!(passes.len(), 2);
+        let refused: Vec<Error> = passes.iter().filter_map(|pass| read(pass).err()).collect();
+        assert_eq!(refused.len(), 1);
+        assert!(refused.into_iter().all(limited));
     }
 
     #[test]

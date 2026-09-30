@@ -7,6 +7,31 @@ application keeps its own changelog at the repository root.
 
 ## [Unreleased]
 
+## [1.1.0]
+
+### Added
+
+- `PassStore::add` stores a pass from the bytes of its `.pkpass`. The bytes
+  are verified first — the same reader, manifest check and archive limits as
+  every later read — and written verbatim through `cosmic_pim_core::atomic`,
+  so a crash mid-add leaves the store as it was. A pass is one pass by its
+  `passTypeIdentifier` and `serialNumber`: adding one the store already holds
+  replaces the stored copy where it is, and `Added` says whether the pass was
+  `New`, `Updated` or `Unchanged`. A pass naming neither identifier is
+  deduplicated by its bytes. The folders the store creates are `0700`.
+- `PassStore::remove` removes a pass by id: its `.pkpass`, and its folder when
+  that was all the folder held. An id that is not a single folder name is
+  refused.
+- `AddError` and `RemoveError`, both `#[non_exhaustive]`.
+- `pkpass::split` returns the passes a file holds: itself for a `.pkpass`,
+  each entry for a `.pkpasses` bundle (what an airline sends for several
+  travellers). The bundle is read within the same limits as a pass, and each
+  pass it yields is verified within them again when it is read or added.
+
+### Changed
+
+- Depends on `cosmic-pim-core` 2, for its atomic writer.
+
 ## [1.0.1]
 
 ### Changed

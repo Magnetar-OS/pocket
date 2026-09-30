@@ -79,6 +79,11 @@ Boarding passes, event tickets, coupons. They arrive as `.pkpass` files or as
 PDFs, they have a time, and they are presented as a barcode.
 
 **Stored here**, verbatim, under `$XDG_DATA_HOME/pocket/passes/<id>/pass.pkpass`.
+`PassStore::add` is the one way in: it verifies the archive, then writes it
+through `cosmic_pim_core::atomic`. A pass is identified the way PassKit
+identifies it, by `passTypeIdentifier` and `serialNumber`, so adding one the
+store already holds replaces that copy rather than adding a second; the folder
+a new pass gets is named from a digest of the pair.
 
 The verbatim rule is inherited from cosmic-pim's *server bytes are stored
 verbatim* invariant, and it binds harder here. cosmic-pim stores VEVENT text
@@ -203,6 +208,14 @@ something else wants the file.
 **Secrets never enter the pass model.** Not the update token, not a card
 number. They go to the Secret Service on an explicit, separate call. A model
 that could carry one will eventually be serialised somewhere it should not be.
+
+**A pass is verified before it is stored, and stored whole or not at all.**
+What `add` accepts is exactly what `list` will read back — same reader, same
+manifest check, same limits — so nothing enters the store that the store would
+then report as unreadable. The write is temp file, `fsync`, rename, through the
+substrate's writer; there is no second writer in this repository. The folders
+the store creates are `0700`, because a `.pkpass` holds its owner's name and
+the token that authenticates them to the issuer.
 
 **An unreadable pass is reported, never dropped.** One corrupt file must not
 quietly shrink the wallet — that failure is discovered at a boarding gate.

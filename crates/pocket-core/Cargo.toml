@@ -1,6 +1,6 @@
 [package]
 name = "pocket-core"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2024"
 # MPL-2.0, not GPL: this crate is shaped to graduate into the cosmic-pim
 # substrate. See the note in the workspace manifest and LICENSING.md.
@@ -19,6 +19,10 @@ thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 sha1 = "0.11.0"
+# For `atomic`, the suite's crash-safe writer, which `PassStore::add` stores a
+# pass through. ARCHITECTURE.md rules out a second one here: a writer that is
+# right about temp files, fsync and the directory entry is written once.
+cosmic-pim-core = "2.0.0"
 
 # The ZXing port, for the four symbologies PassKit defines. All four are
 # needed and no crate covers Aztec but this one, so a single well-worn

@@ -71,7 +71,10 @@ The leverage milestone, and the one that needs the least new infrastructure
 because Envelope already syncs the mail.
 
 - **Depend on cosmic-pim**, for `core::atomic` (the crash-safe writer — do not
-  write a second one), `core::ical`, and `cosmic-pim-accounts`.
+  write a second one), `core::ical`, and `cosmic-pim-accounts`. The first of
+  the three is in: `pocket-core` depends on `cosmic-pim-core` and stores
+  passes through `atomic`. `ical` and the accounts crate arrive with the
+  extractors.
 - **Scan the maildir** at `$XDG_DATA_HOME/mail`, read-only, with no credential
   of its own and no second mail engine. Works with Envelope not running.
 - **Extractors**, in order of how often they are the thing in the message:

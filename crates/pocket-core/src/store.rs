@@ -23,9 +23,25 @@
 //!
 //! `POCKET_PASS_DIR` overrides the root, as `COSMIC_PIM_CALENDAR_DIR` does
 //! for Slate — it is what makes a sandboxed run against scratch data possible.
+//!
+//! # Adding and removing
+//!
+//! [`PassStore::add`] is the one way a pass gets in: the bytes are read and
+//! verified first, exactly as [`PassStore::list`] would read them back, and
+//! only then written — through `cosmic_pim_core::atomic`, the suite's
+//! crash-safe writer, so a pass is either in the store whole or not there.
+//! What arrives is what is stored, byte for byte.
+//!
+//! A pass is *one* pass however many times it is added. PassKit identifies
+//! one by its `passTypeIdentifier` and `serialNumber` together — the pair the
+//! issuer's update service addresses it by — so adding a pass the store
+//! already holds under that pair replaces the stored copy (an issuer's
+//! re-send with a new gate, say) instead of putting a second one beside it.
 
 use crate::model::Pass;
-use std::path::{Path, PathBuf};
+use cosmic_pim_core::atomic;
+use sha1::{Digest as _, Sha1};
+use std::path::{Component, Path, PathBuf};
 
 /// The file inside each pass directory that holds the original archive.
 const PASS_FILE: &str = "pass.pkpass";
@@ -40,6 +56,53 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
+}
+
+/// Why a pass could not be added. Nothing was stored.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum AddError {
+    /// The bytes are not a pass the reader accepts: not a `.pkpass`, altered
+    /// after signing, or past the archive limits.
+    #[error("not a pass that can be added: {0}")]
+    Invalid(#[from] crate::pkpass::Error),
+    /// The store could not be looked through for an earlier copy of the pass.
+    #[error(transparent)]
+    Store(#[from] Error),
+    #[error("writing {path}: {source}")]
+    Write {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// Why a pass could not be removed.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum RemoveError {
+    /// The id is not the name of a pass folder: empty, or a path.
+    #[error("{0:?} is not the name of a pass")]
+    NotAPass(String),
+    #[error("removing {path}: {source}")]
+    Remove {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// What adding a pass did to the store.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Added {
+    /// The pass was not in the store, and now is.
+    New,
+    /// The store held a different version of this pass — the same type
+    /// identifier and serial number, other bytes — and the new one replaced
+    /// it.
+    Updated,
+    /// The store already held exactly these bytes. Nothing was written.
+    Unchanged,
 }
 
 /// A pass as it sits in the store: its id, its bytes, and what they parse to.
@@ -206,6 +269,152 @@ impl PassStore {
         let path = self.root.join(id).join(PASS_FILE);
         std::fs::read(&path).map_err(|source| Error::Io { path, source })
     }
+
+    /// Adds a pass to the store from the bytes of its `.pkpass`.
+    ///
+    /// The bytes are verified before anything is written — the same reader,
+    /// the same manifest check and the same size limits as every later read —
+    /// and stored verbatim, atomically: a crash mid-add leaves the store as
+    /// it was.
+    ///
+    /// A pass the store already holds, by type identifier and serial number,
+    /// is replaced where it is rather than added again; [`Added`] says which
+    /// happened. The folder a new pass gets is named from that pair, so two
+    /// processes adding the same pass at once write the same file, not two.
+    ///
+    /// # Errors
+    ///
+    /// [`AddError::Invalid`] when the bytes are not a pass the reader
+    /// accepts, [`AddError::Store`] when the store cannot be searched for an
+    /// earlier copy, and [`AddError::Write`] when the pass cannot be written.
+    pub fn add(&self, bytes: &[u8]) -> Result<(StoredPass, Added), AddError> {
+        let pass = crate::pkpass::read(bytes)?;
+
+        let earlier = self
+            .list()?
+            .passes
+            .into_iter()
+            .find(|stored| same_pass(&stored.pass, &pass));
+        let (id, outcome) = match earlier {
+            Some(stored) => {
+                if self.bytes(&stored.id)? == bytes {
+                    return Ok((stored, Added::Unchanged));
+                }
+                (stored.id, Added::Updated)
+            }
+            None => (id_for(&pass, bytes), Added::New),
+        };
+
+        let folder = self.root.join(&id);
+        let path = folder.join(PASS_FILE);
+        // A pass with no identifiers is matched by its folder, which is named
+        // from its bytes: already there means already added.
+        if outcome == Added::New && std::fs::read(&path).is_ok_and(|stored| stored == bytes) {
+            return Ok((StoredPass { id, path, pass }, Added::Unchanged));
+        }
+        private_folder(&folder).map_err(|source| AddError::Write {
+            path: folder.clone(),
+            source,
+        })?;
+        atomic::write_bytes(&path, bytes, None).map_err(|why| AddError::Write {
+            path: path.clone(),
+            source: match why {
+                atomic::Error::Io(source) => source,
+                other => std::io::Error::other(other.to_string()),
+            },
+        })?;
+        Ok((StoredPass { id, path, pass }, outcome))
+    }
+
+    /// Removes a pass from the store: its `.pkpass`, and its folder when the
+    /// pass was all the folder held.
+    ///
+    /// Anything else in the folder was not put there by this store and is not
+    /// this store's to delete; the folder then stays, and [`PassStore::list`]
+    /// reports it as holding no pass.
+    ///
+    /// # Errors
+    ///
+    /// [`RemoveError::NotAPass`] when `id` is not a single folder name — it is
+    /// joined to the store's root, and must never be a way out of it — and
+    /// [`RemoveError::Remove`] when the file or the folder cannot be removed,
+    /// a pass that is not there included.
+    pub fn remove(&self, id: &str) -> Result<(), RemoveError> {
+        let mut components = Path::new(id).components();
+        if !matches!(
+            (components.next(), components.next()),
+            (Some(Component::Normal(_)), None)
+        ) {
+            return Err(RemoveError::NotAPass(id.to_owned()));
+        }
+
+        let folder = self.root.join(id);
+        let path = folder.join(PASS_FILE);
+        std::fs::remove_file(&path).map_err(|source| RemoveError::Remove { path, source })?;
+        match std::fs::remove_dir(&folder) {
+            Err(source) if source.kind() != std::io::ErrorKind::DirectoryNotEmpty => {
+                Err(RemoveError::Remove {
+                    path: folder,
+                    source,
+                })
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+/// Whether two passes are the same pass, as PassKit counts it: one type
+/// identifier, one serial number.
+///
+/// A pass that names neither — PassKit requires both, but the reader does not
+/// turn a pass away for it — is nobody's duplicate by this rule; such passes
+/// are told apart by their bytes instead, in [`id_for`].
+fn same_pass(a: &Pass, b: &Pass) -> bool {
+    !(a.pass_type_identifier.is_empty() && a.serial_number.is_empty())
+        && a.pass_type_identifier == b.pass_type_identifier
+        && a.serial_number == b.serial_number
+}
+
+/// The folder a new pass is stored in: a digest of what identifies it.
+///
+/// Of the type identifier and serial number, so the same pass always lands in
+/// the same folder, whoever adds it and however often. Of the archive itself
+/// for a pass that names neither, so that adding those bytes twice is still
+/// one pass. A digest rather than the identifiers themselves because a serial
+/// number is whatever the issuer wrote, and a folder name cannot be.
+///
+/// SHA-1 because it is already here for the manifest; this is a name, not a
+/// proof of anything.
+fn id_for(pass: &Pass, bytes: &[u8]) -> String {
+    let mut hasher = Sha1::new();
+    if pass.pass_type_identifier.is_empty() && pass.serial_number.is_empty() {
+        hasher.update(bytes);
+    } else {
+        hasher.update(pass.pass_type_identifier.as_bytes());
+        // A byte neither identifier can hold, so ("ab", "c") and ("a", "bc")
+        // are different passes.
+        hasher.update([0]);
+        hasher.update(pass.serial_number.as_bytes());
+    }
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Creates a pass's folder, and the store above it, for its owner only.
+///
+/// A `.pkpass` carries its holder's name, their booking, and the token that
+/// authenticates them to the issuer. The writer below creates files with the
+/// process's default mode, so it is the folders that keep them private.
+/// Folders that already exist are left as their owner made them.
+fn private_folder(folder: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(folder)
 }
 
 /// How long after its relevant date a pass with no expiry still counts as
@@ -328,6 +537,242 @@ mod tests {
         let mut ids: Vec<&str> = listing.unreadable.iter().map(|u| u.id.as_str()).collect();
         ids.sort_unstable();
         assert_eq!(ids, ["empty", "loose.pkpass"]);
+    }
+
+    /// `BOARDING` with another serial number, and optionally another gate.
+    fn boarding(serial: &str, gate: &str) -> Vec<u8> {
+        use crate::pkpass::tests::{BOARDING, pkpass};
+
+        let mut json: serde_json::Value = serde_json::from_str(BOARDING).unwrap();
+        let object = json.as_object_mut().unwrap();
+        object.insert("serialNumber".into(), serial.into());
+        object.insert("logoText".into(), format!("Gate {gate}").into());
+        pkpass(&[("pass.json", json.to_string().as_bytes())])
+    }
+
+    /// A pass that is added is there the next time the store is read, with
+    /// the bytes that arrived.
+    #[test]
+    fn an_added_pass_is_stored_verbatim_and_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PassStore::open(dir.path().join("pocket").join("passes"));
+        let bytes = boarding("ABC123", "A1");
+
+        let (stored, outcome) = store.add(&bytes).unwrap();
+        assert_eq!(outcome, Added::New);
+        assert_eq!(stored.pass.serial_number, "ABC123");
+        assert_eq!(stored.path, store.root().join(&stored.id).join(PASS_FILE));
+
+        let listing = store.list().unwrap();
+        assert!(listing.unreadable.is_empty());
+        assert_eq!(listing.passes.len(), 1);
+        assert_eq!(listing.passes[0].id, stored.id);
+        assert_eq!(store.bytes(&stored.id).unwrap(), bytes);
+    }
+
+    /// One pass is one pass: adding it again changes nothing, and adding a
+    /// newer version of it replaces the stored one instead of sitting beside
+    /// it. A different serial number is a different pass.
+    #[test]
+    fn a_pass_is_deduplicated_by_type_identifier_and_serial_number() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PassStore::open(dir.path());
+        let first = boarding("ABC123", "A1");
+
+        let (stored, _) = store.add(&first).unwrap();
+        let (again, outcome) = store.add(&first).unwrap();
+        assert_eq!(outcome, Added::Unchanged);
+        assert_eq!(again.id, stored.id);
+
+        let regated = boarding("ABC123", "B7");
+        let (updated, outcome) = store.add(&regated).unwrap();
+        assert_eq!(outcome, Added::Updated);
+        assert_eq!(updated.id, stored.id);
+        assert_eq!(store.bytes(&stored.id).unwrap(), regated);
+        assert_eq!(store.list().unwrap().passes.len(), 1);
+
+        let (other, outcome) = store.add(&boarding("XYZ789", "A1")).unwrap();
+        assert_eq!(outcome, Added::New);
+        assert_ne!(other.id, stored.id);
+        assert_eq!(store.list().unwrap().passes.len(), 2);
+    }
+
+    /// A pass dropped into the store by hand, in a folder of any name, is
+    /// still that pass: adding it again updates it where it is.
+    #[test]
+    fn a_pass_placed_by_hand_is_found_by_what_it_is_not_where_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("flight-to-lhr")).unwrap();
+        std::fs::write(
+            dir.path().join("flight-to-lhr").join(PASS_FILE),
+            boarding("ABC123", "A1"),
+        )
+        .unwrap();
+
+        let store = PassStore::open(dir.path());
+        let (stored, outcome) = store.add(&boarding("ABC123", "B7")).unwrap();
+        assert_eq!(outcome, Added::Updated);
+        assert_eq!(stored.id, "flight-to-lhr");
+        assert_eq!(store.list().unwrap().passes.len(), 1);
+    }
+
+    /// A pass that names no type identifier and no serial number cannot be
+    /// matched by them. It is one pass by its bytes; another such pass is
+    /// another pass.
+    #[test]
+    fn a_pass_with_no_identifiers_is_deduplicated_by_its_bytes() {
+        use crate::pkpass::tests::pkpass;
+
+        let anonymous = |name: &str| {
+            let json = format!(r#"{{"organizationName":"{name}","generic":{{}}}}"#);
+            pkpass(&[("pass.json", json.as_bytes())])
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let store = PassStore::open(dir.path());
+
+        assert_eq!(store.add(&anonymous("Gym")).unwrap().1, Added::New);
+        assert_eq!(store.add(&anonymous("Gym")).unwrap().1, Added::Unchanged);
+        assert_eq!(store.add(&anonymous("Library")).unwrap().1, Added::New);
+        assert_eq!(store.list().unwrap().passes.len(), 2);
+    }
+
+    /// What the reader would refuse is refused before it is stored: a file
+    /// that is not a pass, one altered after signing, and one past the
+    /// archive limits. The store is left without so much as a folder.
+    #[test]
+    fn what_is_not_a_valid_pass_is_not_stored() {
+        use crate::pkpass::tests::{BOARDING, lying_archive};
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("passes");
+        let store = PassStore::open(&root);
+
+        // A `pass.json` changed after its manifest was written.
+        let tampered = {
+            use std::io::Write as _;
+
+            let manifest = format!(r#"{{"pass.json":"{}"}}"#, "0".repeat(40));
+            let mut buffer = Vec::new();
+            let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buffer));
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file("pass.json", options).unwrap();
+            zip.write_all(BOARDING.as_bytes()).unwrap();
+            zip.start_file("manifest.json", options).unwrap();
+            zip.write_all(manifest.as_bytes()).unwrap();
+            zip.finish().unwrap();
+            buffer
+        };
+
+        for bytes in [
+            b"not a zip".to_vec(),
+            tampered,
+            lying_archive("pass.json", BOARDING.as_bytes(), 1 << 40),
+            vec![0; usize::try_from(crate::pkpass::MAX_ARCHIVE_BYTES).unwrap() + 1],
+        ] {
+            assert!(matches!(store.add(&bytes), Err(AddError::Invalid(_))));
+        }
+        assert!(!root.exists(), "a refused pass left something behind");
+    }
+
+    /// A pass holds its holder's name and the token that authenticates them:
+    /// the folders the store creates are for their owner alone, and nothing
+    /// is left beside the pass by the write.
+    #[cfg(unix)]
+    #[test]
+    fn the_store_creates_folders_only_their_owner_can_enter() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("pocket").join("passes");
+        let store = PassStore::open(&root);
+        let (stored, _) = store.add(&boarding("ABC123", "A1")).unwrap();
+
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&root), 0o700);
+        assert_eq!(mode(&root.join(&stored.id)), 0o700);
+        let beside: Vec<_> = std::fs::read_dir(root.join(&stored.id))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(beside, [std::ffi::OsString::from(PASS_FILE)]);
+    }
+
+    /// A write that cannot land says so, and leaves the pass that was there.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_write_leaves_the_stored_pass_as_it_was() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = PassStore::open(dir.path());
+        let first = boarding("ABC123", "A1");
+        let (stored, _) = store.add(&first).unwrap();
+
+        // The pass's folder takes no new files, so the replacement cannot be
+        // staged beside the pass it would replace.
+        let folder = dir.path().join(&stored.id);
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let result = store.add(&boarding("ABC123", "B7"));
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        assert!(matches!(result, Err(AddError::Write { .. })));
+        assert_eq!(store.bytes(&stored.id).unwrap(), first);
+    }
+
+    /// Removing a pass takes its file and its folder, and only that pass.
+    #[test]
+    fn a_removed_pass_is_gone_and_its_neighbours_are_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PassStore::open(dir.path());
+        let (gone, _) = store.add(&boarding("ABC123", "A1")).unwrap();
+        let (kept, _) = store.add(&boarding("XYZ789", "A1")).unwrap();
+
+        store.remove(&gone.id).unwrap();
+        assert!(!dir.path().join(&gone.id).exists());
+        let listing = store.list().unwrap();
+        assert!(listing.unreadable.is_empty());
+        assert_eq!(listing.passes.len(), 1);
+        assert_eq!(listing.passes[0].id, kept.id);
+
+        // Removing it again is an error, not a silent success.
+        assert!(matches!(
+            store.remove(&gone.id),
+            Err(RemoveError::Remove { .. })
+        ));
+    }
+
+    /// What else is in a pass's folder was not put there by the store, and
+    /// is not deleted with the pass.
+    #[test]
+    fn removing_a_pass_leaves_what_else_its_folder_holds() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PassStore::open(dir.path());
+        let (stored, _) = store.add(&boarding("ABC123", "A1")).unwrap();
+        let note = dir.path().join(&stored.id).join("receipt.pdf");
+        std::fs::write(&note, b"kept").unwrap();
+
+        store.remove(&stored.id).unwrap();
+        assert!(note.exists());
+        assert!(!dir.path().join(&stored.id).join(PASS_FILE).exists());
+    }
+
+    /// An id is a folder name and nothing else. One that is a path must not
+    /// become a way to delete a file outside the store.
+    #[test]
+    fn an_id_that_is_a_path_removes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join(PASS_FILE), b"not the store's").unwrap();
+        let store = PassStore::open(dir.path().join("passes"));
+
+        for id in ["", ".", "..", "../outside", "a/b", "/etc"] {
+            assert!(
+                matches!(store.remove(id), Err(RemoveError::NotAPass(_))),
+                "{id:?} was taken for a pass"
+            );
+        }
+        assert!(outside.join(PASS_FILE).exists());
     }
 
     /// Upcoming passes first, soonest at the top; then undated cards; then
