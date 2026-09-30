@@ -33,6 +33,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Rebuilt against the current COSMIC libraries (libcosmic `6af8b70`).
 - Passes are added through the suite's crash-safe writer
   (`cosmic_pim_core::atomic`), and checked first with the same reader and the
   same size limits as every later read: a pass is in the wallet whole, or not
