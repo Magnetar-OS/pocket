@@ -16,7 +16,8 @@ Keywords=wallet;pass;passes;pkpass;boarding;ticket;barcode;loyalty;card;coupon;
 # but serves org.freedesktop.DbusActivation rather than the
 # org.freedesktop.Application the freedesktop spec requires, so GIO's call fails
 # silently and opening a .pkpass from a file manager would do nothing at all.
-# The Exec line reaches the same place.
+# The Exec line reaches the same place: a second `pocket` hands its command
+# line to the running window over that same libcosmic interface and exits.
 # %F, not %U: Pocket reads local files, and with %F the file manager hands over
 # paths (mounting a remote file first) instead of URLs. A pass opened this way
 # is shown; "Add to wallet" keeps it. A .pkpasses bundle is every pass in it.

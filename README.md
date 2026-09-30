@@ -77,15 +77,16 @@ Working and tested:
   each of the five styles specifies — a boarding pass shows origin and
   destination side by side, and the back of the pass is shown below.
 - **Adding and removing.** "Open with Pocket" in a file manager shows a
-  `.pkpass`, and **Add to wallet** keeps it. **Add pass…** in the header adds
-  the files chosen in a dialog, and files dropped on the window are added the
-  same way. A `.pkpasses` bundle — several travellers on one booking — is
-  every pass it holds, each read within the same limits as a single pass.
-  Either way the pass is verified first and then stored byte for byte,
-  atomically, through the substrate's crash-safe writer
-  (`cosmic_pim_core::atomic`). A pass is one pass however often it is added:
-  the same type identifier and serial number replace the stored copy instead
-  of duplicating it. **Remove from wallet** deletes one, after asking.
+  `.pkpass` — in the window already running, if there is one — and **Add to
+  wallet** keeps it. **Add pass…** in the header adds the files chosen in a
+  dialog, and files dropped on the window are added the same way. A
+  `.pkpasses` bundle — several travellers on one booking — is every pass it
+  holds, each read within the same limits as a single pass. Either way the
+  pass is verified first and then stored byte for byte, atomically, through
+  the substrate's crash-safe writer (`cosmic_pim_core::atomic`). A pass is
+  one pass however often it is added: the same type identifier and serial
+  number replace the stored copy instead of duplicating it. **Remove from
+  wallet** deletes one, after asking.
 - A COSMIC application that lists passes by style and shows the selected one
 
 Not done, and not pretended otherwise:
@@ -110,7 +111,8 @@ just run-sandboxed
 
 That builds and runs against `/tmp/pocket-passes` via `POCKET_PASS_DIR`,
 so it leaves the real wallet alone. Add a `.pkpass` with **Add pass…**, or
-open one with `pocket flight.pkpass`.
+open one with `pocket flight.pkpass` — while a window is up, that hands the
+file to it and exits.
 
 ## Building
 
@@ -141,6 +143,7 @@ i18n/<lang>/          one Fluent catalogue per locale
 build.rs              generates the desktop entry and metainfo from the
                       catalogue, so the app's name is translated in the
                       applications menu and the software centre too
+tests/                the second-launch handover, against a private session bus
 justfile              build, install and metadata checks — the packager's path
 cosmic-conventions.md what the COSMIC repositories agree on, read off source
 ```

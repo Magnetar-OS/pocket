@@ -39,8 +39,8 @@ successfully off the laptop screen by a real reader.
 face are implemented, and screenshots of the running application decode back to
 the exact message the issuer wrote in all four symbologies — which is the whole
 of the criterion above except the reader itself. Import is implemented:
-"Open with Pocket" on a `.pkpass` shows the pass and **Add to wallet** keeps
-it; **Add pass…**
+"Open with Pocket" on a `.pkpass` shows the pass — in the window already
+running, when there is one — and **Add to wallet** keeps it; **Add pass…**
 adds files chosen in a dialog. `PassStore::add` verifies the archive, then
 writes it verbatim through `cosmic_pim_core::atomic` rather than a second
 writer here, and replaces an earlier copy of the same pass (type identifier

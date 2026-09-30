@@ -26,6 +26,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the same pass when its issuer's type identifier and its serial number match:
   the identical file is reported as already there, and a newer version — a
   re-sent boarding pass with a new gate — replaces the stored one.
+- "Open with Pocket" on another pass while Pocket is running shows that pass
+  in the window that is already up, selected and ready to present, instead of
+  starting a second window. If a barcode is on the whole screen at the time,
+  the new pass joins the list without taking its place.
 
 ### Changed
 

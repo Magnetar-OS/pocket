@@ -31,6 +31,7 @@ use cosmic::widget::{self, nav_bar};
 use pocket_core::{Added, Listing, Pass, PassKind, PassStore, StoredPass, Symbol, UnreadablePass};
 
 use crate::fl;
+use crate::launch::{self, Flags};
 use crate::screen::{self, Hold};
 
 const APP_ID: &str = "com.magnetaros.Pocket";
@@ -628,7 +629,7 @@ fn label(filter: Filter) -> String {
 impl cosmic::Application for AppModel {
     type Executor = cosmic::executor::Default;
     /// Files to show, from "Open with Pocket".
-    type Flags = Vec<PathBuf>;
+    type Flags = Flags;
     type Message = Message;
     const APP_ID: &'static str = APP_ID;
 
@@ -640,7 +641,7 @@ impl cosmic::Application for AppModel {
         &mut self.core
     }
 
-    fn init(core: Core, files: Self::Flags) -> (Self, Task<Self::Message>) {
+    fn init(core: Core, flags: Self::Flags) -> (Self, Task<Self::Message>) {
         let about = About::default()
             .name(fl!("app-title"))
             .icon(widget::icon::from_svg_bytes(APP_ICON))
@@ -693,8 +694,39 @@ impl cosmic::Application for AppModel {
         app.reload();
         // Files handed over by the file manager come first and the first of
         // them is selected: it is what the user just asked to see.
-        app.show(&files, true);
+        app.show(&flags.paths(), true);
         (app, Task::none())
+    }
+
+    /// A second launch handing over the files it was asked to open — "Open
+    /// with Pocket" on another pass while this window is up.
+    ///
+    /// The window has already been raised by the time this is called; what is
+    /// left is to show the passes, exactly as the first launch would have.
+    fn dbus_activation(
+        &mut self,
+        message: cosmic::dbus_activation::Message,
+    ) -> Task<Self::Message> {
+        use cosmic::dbus_activation::Details;
+
+        let files = match message.msg {
+            Details::ActivateAction { action, args } if action == launch::OPEN => {
+                launch::paths(&args)
+            }
+            // A launcher that speaks the interface itself sends the files as
+            // URLs rather than through a second `pocket`.
+            Details::Open { url } => url
+                .iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .collect(),
+            // Nothing to show, or an action Pocket does not have: raising the
+            // window was the whole request.
+            Details::Activate | Details::ActivateAction { .. } => Vec::new(),
+        };
+        // The barcode on screen is what the user is in the middle of; a pass
+        // arriving from elsewhere joins the list without taking its place.
+        self.show(&files, !self.presenting);
+        Task::none()
     }
 
     /// The one action the header offers: adding passes to the wallet.
@@ -970,6 +1002,83 @@ mod tests {
         );
         std::fs::write(&path, pkpass(&json)).unwrap();
         path
+    }
+
+    /// What a second `pocket <files>` sends the running window.
+    fn handed_over(files: &[&Path]) -> cosmic::dbus_activation::Message {
+        use cosmic::app::CosmicFlags as _;
+
+        let flags = Flags::new(files.iter().map(|file| file.as_os_str().to_owned()));
+        cosmic::dbus_activation::Message {
+            activation_token: None,
+            desktop_startup_id: None,
+            msg: cosmic::dbus_activation::Details::ActivateAction {
+                action: flags.action().expect("there is something to show").clone(),
+                args: flags.args().into_iter().map(str::to_owned).collect(),
+            },
+        }
+    }
+
+    /// "Open with Pocket" on a second pass while Pocket is running: the pass
+    /// is shown in the window that is up, selected, with its barcode ready —
+    /// and the pass that was being looked at is still in the list.
+    #[test]
+    fn a_pass_opened_while_running_is_shown_in_this_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let first = pass_file(dir.path(), "first.pkpass", "A1", "1");
+        app.show(std::slice::from_ref(&first), true);
+        assert_eq!(app.opened(), 1);
+
+        let second = pass_file(dir.path(), "second.pkpass", "B2", "2");
+        let _ = app.dbus_activation(handed_over(&[&second]));
+        assert_eq!(app.opened(), 2);
+        assert_eq!(app.passes[app.selected.unwrap()].path, second);
+        assert!(app.passes.iter().any(|stored| stored.path == first));
+
+        // Opened again: selected, not shown twice.
+        let _ = app.dbus_activation(handed_over(&[&first]));
+        assert_eq!(app.opened(), 2);
+        assert_eq!(app.passes[app.selected.unwrap()].path, first);
+    }
+
+    /// A launch with nothing to show raises the window and changes nothing
+    /// in it; a file that will not read is named with the reason.
+    #[test]
+    fn a_handover_with_nothing_readable_shows_no_pass() {
+        use cosmic::dbus_activation::{Details, Message as Activation};
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let _ = app.dbus_activation(Activation {
+            activation_token: None,
+            desktop_startup_id: None,
+            msg: Details::Activate,
+        });
+        assert!(app.passes.is_empty() && app.unreadable_files.is_empty());
+
+        let broken = dir.path().join("broken.pkpass");
+        std::fs::write(&broken, b"not a zip").unwrap();
+        let _ = app.dbus_activation(handed_over(&[&broken]));
+        assert!(app.passes.is_empty());
+        assert_eq!(app.unreadable_files.len(), 1);
+        assert_eq!(app.unreadable_files[0].id, "broken.pkpass");
+    }
+
+    /// A pass arriving while a barcode is on the whole screen joins the list
+    /// without taking the presenter away from the pass being scanned.
+    #[test]
+    fn a_pass_opened_during_a_presentation_does_not_replace_the_barcode() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let presented = pass_file(dir.path(), "presented.pkpass", "A1", "1");
+        app.show(std::slice::from_ref(&presented), true);
+        app.presenting = true;
+
+        let other = pass_file(dir.path(), "other.pkpass", "B2", "2");
+        let _ = app.dbus_activation(handed_over(&[&other]));
+        assert_eq!(app.opened(), 2);
+        assert_eq!(app.passes[app.selected.unwrap()].path, presented);
     }
 
     /// Add to wallet: the pass that was only being shown is stored, and what

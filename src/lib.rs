@@ -14,6 +14,7 @@ pub mod app;
 pub mod barcode;
 pub mod face;
 pub mod i18n;
+pub mod launch;
 pub mod presenter;
 pub mod screen;
 
@@ -40,10 +41,10 @@ pub fn run() -> cosmic::iced::Result {
 
     // The files "Open with Pocket" hands over (`Exec=pocket %F`), shown
     // alongside the wallet without being added to it.
-    let files = std::env::args_os()
-        .skip(1)
-        .map(std::path::PathBuf::from)
-        .collect();
+    let flags = launch::Flags::new(std::env::args_os().skip(1));
 
-    cosmic::app::run::<app::AppModel>(settings, files)
+    // `run_single_instance` rather than `run`: when a window is already up it
+    // is handed the flags over the session bus and this process exits, so a
+    // second "Open with Pocket" shows its pass in the window that is there.
+    cosmic::app::run_single_instance::<app::AppModel>(settings, flags)
 }

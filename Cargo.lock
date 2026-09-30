@@ -4015,6 +4015,7 @@ dependencies = [
  "rust-embed",
  "sha1",
  "tempfile",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "url",

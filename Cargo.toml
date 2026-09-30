@@ -58,8 +58,10 @@ ashpd = "0.12.3"
 # not carry the `MaxDisplayBrightness` property the presenter needs.
 zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
 
-# `file://` URLs: what a file manager puts on a drag (`text/uri-list`). Already
-# in the graph through libcosmic.
+# `file://` URLs: how a `.pkpass` path crosses the session bus to the window
+# already running. The bus carries text only, and a file name is bytes. Already
+# in the graph through libcosmic, whose activation messages are made of the
+# same type.
 url = "2"
 
 [dependencies.libcosmic]
@@ -67,8 +69,8 @@ git = "https://github.com/pop-os/libcosmic.git"
 features = [
     # About widget for the app.
     "about",
-    # Focuses the running instance rather than opening a second window, and is
-    # what will carry a `.pkpass` path handed over by a file manager.
+    # `run_single_instance`: a second launch hands its `.pkpass` paths to the
+    # window already running and exits. See `src/launch.rs`.
     "single-instance",
     # GPU-accelerated rendering.
     "wgpu",
@@ -78,6 +80,9 @@ features = [
 
 [dev-dependencies]
 tempfile = "3"
+# For tests/handover.rs: the runtime a stand-in for the running window serves
+# the activation interface on, over a private session bus.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 # To build a `.pkpass` for "Open with Pocket" to read, with a manifest the
 # reader accepts: the same two pocket-core's own tests use.
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
