@@ -21,7 +21,7 @@ edition = "2024"
 license = "GPL-3.0-only"
 description = "Pocket — passes, tickets and cards for the COSMIC desktop"
 repository = "https://github.com/Magnetar-OS/pocket"
-rust-version = "1.98.1"
+rust-version = "1.99.0"
 # Not a crates.io artefact: the short name there belongs to an unrelated crate,
 # and the application ships through Magnetar packaging. `pocket-core` is the
 # published half. See LICENSING.md.
