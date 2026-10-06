@@ -290,11 +290,14 @@ impl PassStore {
     pub fn add(&self, bytes: &[u8]) -> Result<(StoredPass, Added), AddError> {
         let pass = crate::pkpass::read(bytes)?;
 
-        let earlier = self
-            .list()?
-            .passes
-            .into_iter()
-            .find(|stored| same_pass(&stored.pass, &pass));
+        let earlier = self.list()?.passes.into_iter().find(|stored| {
+            same_pass(&stored.pass, &pass)
+                // A pass with no identity is the same pass only byte for
+                // byte, wherever in the store those bytes sit.
+                || (!identified(&pass)
+                    && !identified(&stored.pass)
+                    && self.bytes(&stored.id).is_ok_and(|kept| kept == bytes))
+        });
         let (id, outcome) = match earlier {
             Some(stored) => {
                 if self.bytes(&stored.id)? == bytes {
@@ -307,11 +310,6 @@ impl PassStore {
 
         let folder = self.root.join(&id);
         let path = folder.join(PASS_FILE);
-        // A pass with no identifiers is matched by its folder, which is named
-        // from its bytes: already there means already added.
-        if outcome == Added::New && std::fs::read(&path).is_ok_and(|stored| stored == bytes) {
-            return Ok((StoredPass { id, path, pass }, Added::Unchanged));
-        }
         private_folder(&folder).map_err(|source| AddError::Write {
             path: folder.clone(),
             source,
@@ -363,14 +361,24 @@ impl PassStore {
     }
 }
 
+/// Whether a pass names both halves of what PassKit identifies it by.
+///
+/// PassKit requires a type identifier and a serial number, but the reader
+/// does not turn a pass away for lacking one. A serial number is unique only
+/// within its type, so one without the other identifies nothing: two issuers
+/// both numbering from 1 are two passes.
+fn identified(pass: &Pass) -> bool {
+    !pass.pass_type_identifier.is_empty() && !pass.serial_number.is_empty()
+}
+
 /// Whether two passes are the same pass, as PassKit counts it: one type
 /// identifier, one serial number.
 ///
-/// A pass that names neither — PassKit requires both, but the reader does not
-/// turn a pass away for it — is nobody's duplicate by this rule; such passes
-/// are told apart by their bytes instead, in [`id_for`].
+/// A pass that is not [`identified`] is nobody's duplicate by this rule; such
+/// passes are told apart by their bytes instead, in [`PassStore::add`] and
+/// [`id_for`].
 fn same_pass(a: &Pass, b: &Pass) -> bool {
-    !(a.pass_type_identifier.is_empty() && a.serial_number.is_empty())
+    identified(a)
         && a.pass_type_identifier == b.pass_type_identifier
         && a.serial_number == b.serial_number
 }
@@ -379,15 +387,15 @@ fn same_pass(a: &Pass, b: &Pass) -> bool {
 ///
 /// Of the type identifier and serial number, so the same pass always lands in
 /// the same folder, whoever adds it and however often. Of the archive itself
-/// for a pass that names neither, so that adding those bytes twice is still
-/// one pass. A digest rather than the identifiers themselves because a serial
-/// number is whatever the issuer wrote, and a folder name cannot be.
+/// for a pass that does not name both, so that adding those bytes twice is
+/// still one pass. A digest rather than the identifiers themselves because a
+/// serial number is whatever the issuer wrote, and a folder name cannot be.
 ///
 /// SHA-1 because it is already here for the manifest; this is a name, not a
 /// proof of anything.
 fn id_for(pass: &Pass, bytes: &[u8]) -> String {
     let mut hasher = Sha1::new();
-    if pass.pass_type_identifier.is_empty() && pass.serial_number.is_empty() {
+    if !identified(pass) {
         hasher.update(bytes);
     } else {
         hasher.update(pass.pass_type_identifier.as_bytes());
@@ -634,6 +642,54 @@ mod tests {
         assert_eq!(store.add(&anonymous("Gym")).unwrap().1, Added::Unchanged);
         assert_eq!(store.add(&anonymous("Library")).unwrap().1, Added::New);
         assert_eq!(store.list().unwrap().passes.len(), 2);
+    }
+
+    /// A serial number is unique only within one type identifier, so a pass
+    /// that names a serial and no type has nothing to be matched by: two
+    /// issuers both numbering from 1 are two passes, and adding the second
+    /// must not replace the first.
+    #[test]
+    fn a_pass_naming_only_one_identifier_is_nobodys_duplicate() {
+        use crate::pkpass::tests::pkpass;
+
+        let numbered = |name: &str| {
+            let json =
+                format!(r#"{{"organizationName":"{name}","serialNumber":"1","generic":{{}}}}"#);
+            pkpass(&[("pass.json", json.as_bytes())])
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let store = PassStore::open(dir.path());
+
+        let (gym, outcome) = store.add(&numbered("Gym")).unwrap();
+        assert_eq!(outcome, Added::New);
+        let (library, outcome) = store.add(&numbered("Library")).unwrap();
+        assert_eq!(outcome, Added::New, "the library card replaced the gym's");
+        assert_ne!(library.id, gym.id);
+        assert_eq!(store.bytes(&gym.id).unwrap(), numbered("Gym"));
+        assert_eq!(store.add(&numbered("Gym")).unwrap().1, Added::Unchanged);
+        assert_eq!(store.list().unwrap().passes.len(), 2);
+    }
+
+    /// A pass with no identity that is already in the store under a folder
+    /// of another name — put there by hand, or by a version that named the
+    /// folder differently — is found by its bytes and not added again.
+    #[test]
+    fn a_pass_with_no_identity_placed_by_hand_is_not_added_again() {
+        use crate::pkpass::tests::pkpass;
+
+        let bytes = pkpass(&[(
+            "pass.json",
+            br#"{"organizationName":"Gym","serialNumber":"1","generic":{}}"#,
+        )]);
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("gym-card")).unwrap();
+        std::fs::write(dir.path().join("gym-card").join(PASS_FILE), &bytes).unwrap();
+
+        let store = PassStore::open(dir.path());
+        let (stored, outcome) = store.add(&bytes).unwrap();
+        assert_eq!(outcome, Added::Unchanged);
+        assert_eq!(stored.id, "gym-card");
+        assert_eq!(store.list().unwrap().passes.len(), 1);
     }
 
     /// What the reader would refuse is refused before it is stored: a file

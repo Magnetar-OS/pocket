@@ -7,6 +7,17 @@ application keeps its own changelog at the repository root.
 
 ## [Unreleased]
 
+## [1.1.1]
+
+### Fixed
+
+- `PassStore::add` no longer takes a pass that names a serial number and no
+  type identifier (or the reverse) for another issuer's pass with the same
+  half. A serial number is unique only within its type, so such a pass has
+  no identity to be matched by: adding the second replaced the first. It is
+  now one pass only byte for byte, as a pass naming neither already was, and
+  is found by its bytes whatever its folder is called.
+
 ## [1.1.0]
 
 ### Added
