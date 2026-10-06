@@ -408,7 +408,7 @@ impl AppModel {
         self.notice = match outcomes[..] {
             [] => None,
             [outcome] => Some(added(outcome)),
-            _ => Some(fl!("added-several", count = outcomes.len())),
+            _ => Some(added_several(&outcomes)),
         };
     }
 
@@ -587,6 +587,29 @@ fn added(outcome: Added) -> String {
         Added::Updated => fl!("added-updated"),
         Added::Unchanged => fl!("added-already"),
     }
+}
+
+/// What adding several passes at once did: how many were new, how many
+/// replaced an earlier version, and how many the wallet already had — a pass
+/// it already had was not added, and saying it was would be wrong.
+fn added_several(outcomes: &[Added]) -> String {
+    let count = |which: Added| outcomes.iter().filter(|outcome| **outcome == which).count();
+    let (new, updated, unchanged) = (
+        count(Added::New),
+        count(Added::Updated),
+        count(Added::Unchanged),
+    );
+    let mut sentences = Vec::with_capacity(3);
+    if new > 0 {
+        sentences.push(fl!("added-several", count = new));
+    }
+    if updated > 0 {
+        sentences.push(fl!("updated-several", count = updated));
+    }
+    if unchanged > 0 {
+        sentences.push(fl!("already-several", count = unchanged));
+    }
+    sentences.join(" ")
 }
 
 /// The time to judge a pass's expiry by.
@@ -1244,6 +1267,35 @@ mod tests {
         // A dismissed dialog changes nothing, the notice included.
         let _ = app.update(Message::Import(Vec::new()));
         assert_eq!(app.notice, Some(fl!("added-several", count = 2)));
+    }
+
+    /// Several passes at once are counted by what happened to each: one that
+    /// was already in the wallet, or that replaced an earlier version, was
+    /// not "added".
+    #[test]
+    fn an_import_of_several_passes_says_what_happened_to_each() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let held = pass_file(dir.path(), "held.pkpass", "A1", "1");
+        let regated = pass_file(dir.path(), "regated.pkpass", "B2", "1");
+        let _ = app.update(Message::Import(vec![held.clone(), regated]));
+        assert_eq!(app.notice, Some(fl!("added-several", count = 2)));
+
+        let regated = pass_file(dir.path(), "regated.pkpass", "B2", "7");
+        let new = pass_file(dir.path(), "new.pkpass", "C3", "1");
+        let _ = app.update(Message::Import(vec![held, regated, new]));
+        assert_eq!(app.passes.len(), 3);
+        assert_eq!(
+            app.notice,
+            Some(
+                [
+                    fl!("added-several", count = 1),
+                    fl!("updated-several", count = 1),
+                    fl!("already-several", count = 1),
+                ]
+                .join(" ")
+            )
+        );
     }
 
     /// Removing a pass asks first. Cancel leaves it; Remove deletes it from

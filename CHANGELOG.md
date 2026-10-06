@@ -11,6 +11,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Adding a pass that carries a serial number but no pass type identifier no
   longer replaces another issuer's pass that happens to have the same serial
   number. Two cards both numbered 1 are two cards.
+- Adding several passes at once says what happened to each: how many were
+  added, how many replaced an earlier version, and how many were already in
+  the wallet. It said all of them were added.
 
 ## [1.3.1] - 2026-10-03
 

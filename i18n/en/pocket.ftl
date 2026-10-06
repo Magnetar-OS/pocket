@@ -45,7 +45,20 @@ add-to-wallet = Add to wallet
 added = Added to your wallet.
 added-updated = Your wallet already had an earlier version of this pass. It has been replaced with this one.
 added-already = This pass is already in your wallet.
-added-several = { $count } passes added to your wallet.
+# After several passes were added at once: one sentence for each of these
+# that happened, in this order.
+added-several = { $count } { $count ->
+        [one] pass
+       *[other] passes
+    } added to your wallet.
+updated-several = { $count } { $count ->
+        [one] pass
+       *[other] passes
+    } replaced with a newer version.
+already-several = { $count } { $count ->
+        [one] pass was
+       *[other] passes were
+    } already in your wallet.
 add-failed = { $name } could not be added: { $reason }
 no-wallet = the wallet could not be opened
 remove-from-wallet = Remove from wallet
