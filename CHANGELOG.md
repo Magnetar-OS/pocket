@@ -21,6 +21,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   added. The line stayed above the list for as long as Pocket ran.
 - Escape closes the "Remove from your wallet?" question, leaving the pass.
   It did nothing there.
+- The count above the list is of the passes in the wallet. A pass opened
+  from a file and not yet added was counted with them.
 
 ## [1.3.1] - 2026-10-03
 

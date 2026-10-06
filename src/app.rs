@@ -244,6 +244,12 @@ impl AppModel {
         self.shown.len()
     }
 
+    /// How many passes the wallet holds: what the count above the list says.
+    /// A pass being shown from a file is not in the wallet yet.
+    fn kept(&self) -> usize {
+        self.passes.len() - self.opened()
+    }
+
     /// The selected pass, when it is one the store holds.
     fn selected_stored(&self) -> Option<&StoredPass> {
         self.selected
@@ -869,7 +875,7 @@ impl cosmic::Application for AppModel {
             .spacing(spacing.space_xs)
             .push(widget::text::caption(fl!(
                 "passes-count",
-                count = self.passes.len()
+                count = self.kept()
             )));
         if self.dragging {
             left = left.push(widget::text::body(fl!("drop-to-add")));
@@ -1427,6 +1433,20 @@ mod tests {
         assert!(cosmic::Application::dialog(&app).is_none());
         assert_eq!(app.passes.len(), 1);
         assert!(app.passes[0].path.exists());
+    }
+
+    /// The count above the list is of the wallet: a file being looked at is
+    /// not in it.
+    #[test]
+    fn the_count_is_of_the_wallet_not_of_the_files_being_shown() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let file = pass_file(dir.path(), "flight.pkpass", "A1", "1");
+        app.show(std::slice::from_ref(&file), true);
+        assert_eq!(app.kept(), 0);
+
+        let _ = app.update(Message::Add);
+        assert_eq!(app.kept(), 1);
     }
 
     /// A pass that is only being shown is not the wallet's to remove: there
