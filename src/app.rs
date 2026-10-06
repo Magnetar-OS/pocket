@@ -934,7 +934,8 @@ impl cosmic::Application for AppModel {
                     use cosmic::dialog::file_chooser::{self, FileFilter};
 
                     let dialog = file_chooser::open::Dialog::new()
-                        .title(fl!("add-pass"))
+                        .title(fl!("add-pass-title"))
+                        .accept_label(fl!("add-pass-accept"))
                         .filter(
                             FileFilter::new(&fl!("pass-files"))
                                 .glob("*.pkpass")

@@ -34,8 +34,11 @@ opened-from-file = Opened from a file. This pass is shown, not kept in your wall
 
 ## Adding and removing
 
-# The header button that opens the file dialog, and that dialog's title.
+# The header button that opens the file dialog.
 add-pass = Add pass…
+# That dialog's title, and the button in it that adds the chosen files.
+add-pass-title = Add passes
+add-pass-accept = Add
 # The file dialog's filter.
 pass-files = Passes (.pkpass, .pkpasses)
 # Shown while files are being dragged over the window.
