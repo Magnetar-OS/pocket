@@ -819,8 +819,11 @@ impl cosmic::Application for AppModel {
         Task::none()
     }
 
-    /// Escape leaves the presenter, and only the presenter.
+    /// Escape dismisses the question being asked, else leaves the presenter.
     fn on_escape(&mut self) -> Task<Self::Message> {
+        if self.removing.take().is_some() {
+            return Task::none();
+        }
         if self.presenting {
             return self.present(false);
         }
@@ -1404,6 +1407,26 @@ mod tests {
         assert_ne!(app.passes[0].id, doomed.id);
         assert_eq!(app.selected, None);
         assert!(cosmic::Application::dialog(&app).is_none());
+    }
+
+    /// Escape answers the question as Cancel does: the pass stays.
+    #[test]
+    fn escape_dismisses_the_question_without_removing_the_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let _ = app.update(Message::Import(vec![pass_file(
+            dir.path(),
+            "flight.pkpass",
+            "A1",
+            "1",
+        )]));
+        let _ = app.update(Message::AskRemove);
+        assert!(cosmic::Application::dialog(&app).is_some());
+
+        let _ = app.on_escape();
+        assert!(cosmic::Application::dialog(&app).is_none());
+        assert_eq!(app.passes.len(), 1);
+        assert!(app.passes[0].path.exists());
     }
 
     /// A pass that is only being shown is not the wallet's to remove: there

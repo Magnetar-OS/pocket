@@ -19,6 +19,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in the list twice: as the opened file, and as the pass in the wallet.
 - A file that could not be read is named until the next files are opened or
   added. The line stayed above the list for as long as Pocket ran.
+- Escape closes the "Remove from your wallet?" question, leaving the pass.
+  It did nothing there.
 
 ## [1.3.1] - 2026-10-03
 
