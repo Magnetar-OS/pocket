@@ -14,6 +14,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Adding several passes at once says what happened to each: how many were
   added, how many replaced an earlier version, and how many were already in
   the wallet. It said all of them were added.
+- A pass opened from the file manager and then added by dropping the same
+  file on the window, or choosing it in the dialog, is listed once. It stayed
+  in the list twice: as the opened file, and as the pass in the wallet.
 
 ## [1.3.1] - 2026-10-03
 

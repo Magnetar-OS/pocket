@@ -326,14 +326,30 @@ impl AppModel {
     }
 
     /// Stores each of `passes` in the wallet, saying for each what happened.
-    fn keep(&self, passes: Vec<Vec<u8>>) -> Vec<Result<(StoredPass, Added), String>> {
+    fn keep(&self, passes: &[Vec<u8>]) -> Vec<Result<(StoredPass, Added), String>> {
         let Some(store) = &self.store else {
             return vec![Err(fl!("no-wallet"))];
         };
         passes
-            .into_iter()
-            .map(|bytes| store.add(&bytes).map_err(|why| why.to_string()))
+            .iter()
+            .map(|bytes| store.add(bytes).map_err(|why| why.to_string()))
             .collect()
+    }
+
+    /// Stops showing the file a pass was opened from, now that the wallet
+    /// holds that pass: it is one row in the list, not the file and the
+    /// wallet's copy both.
+    fn forget_shown(&mut self, bytes: &[u8]) {
+        let Some(index) = self.shown.iter().position(|shown| shown == bytes) else {
+            return;
+        };
+        self.shown.remove(index);
+        self.passes.remove(index);
+        self.selected = match self.selected {
+            Some(selected) if selected == index => None,
+            Some(selected) if selected > index => Some(selected - 1),
+            selected => selected,
+        };
     }
 
     /// Adds the selected pass, which is being shown from a file, to the
@@ -348,11 +364,9 @@ impl AppModel {
         };
         let bytes = self.shown[index].clone();
         let name = self.passes[index].id.clone();
-        match self.keep(vec![bytes]).remove(0) {
+        match self.keep(std::slice::from_ref(&bytes)).remove(0) {
             Ok((stored, outcome)) => {
-                self.passes.remove(index);
-                self.shown.remove(index);
-                self.selected = None;
+                self.forget_shown(&bytes);
                 self.reload();
                 self.select_stored(Some(&stored.path));
                 self.notice = Some(added(outcome));
@@ -366,7 +380,8 @@ impl AppModel {
     /// Adds files to the wallet — chosen in the dialog or dropped on the
     /// window — and selects the last pass added. A `.pkpasses` bundle adds
     /// every pass it holds. What cannot be added is named with the reason and
-    /// does not stop the rest.
+    /// does not stop the rest. A pass that was being shown from a file is
+    /// from then on the wallet's.
     fn import(&mut self, files: &[PathBuf]) {
         if files.is_empty() {
             return;
@@ -388,9 +403,10 @@ impl AppModel {
                 }
             };
             let bundled = passes.len() > 1;
-            for (index, result) in self.keep(passes).into_iter().enumerate() {
+            for (index, result) in self.keep(&passes).into_iter().enumerate() {
                 match result {
                     Ok((stored, outcome)) => {
+                        self.forget_shown(&passes[index]);
                         last = Some(stored.path);
                         outcomes.push(outcome);
                     }
@@ -1205,6 +1221,28 @@ mod tests {
         assert_eq!(stored.len(), 2);
         assert!(stored.contains(&"A1") && stored.contains(&"A2"));
         assert_eq!(app.notice, Some(fl!("added-several", count = 2)));
+    }
+
+    /// A pass being shown from a file, then added by another route — dropped
+    /// on the window, or chosen in the dialog — is in the list once: the
+    /// wallet's copy, not the file and the wallet's copy both. Other files
+    /// being shown stay as they were.
+    #[test]
+    fn a_shown_pass_added_by_another_route_is_one_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let file = pass_file(dir.path(), "flight.pkpass", "A1", "1");
+        let other = pass_file(dir.path(), "other.pkpass", "B2", "1");
+        app.show(&[file.clone(), other.clone()], true);
+        assert_eq!(app.opened(), 2);
+
+        let _ = app.update(Message::Import(vec![file]));
+        assert_eq!(app.opened(), 1, "the added pass is still shown as a file");
+        assert_eq!(app.passes.len(), 2);
+        assert_eq!(app.passes[0].path, other);
+        let kept = &app.passes[app.selected.expect("the added pass is selected")];
+        assert_eq!(kept.pass.serial_number, "A1");
+        assert!(kept.path.starts_with(dir.path().join("passes")));
     }
 
     /// Files dropped on the window go into the wallet; what the drag carried
