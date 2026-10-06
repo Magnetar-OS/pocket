@@ -98,7 +98,8 @@ pub struct AppModel {
     unreadable: Vec<UnreadablePass>,
     /// Files that were opened, or chosen to be added, and would not read: by
     /// name, with the reason. A file the user pointed at must not vanish
-    /// without a word.
+    /// without a word — but it is the last files handed over this speaks of,
+    /// so the next ones replace it.
     unreadable_files: Vec<UnreadablePass>,
     /// The bytes of each pass shown from a file, in the order they lead
     /// `passes`. Kept so that Add to wallet stores exactly what was shown.
@@ -294,6 +295,10 @@ impl AppModel {
     /// A pass already being shown is selected rather than shown twice, and a
     /// file or bundled pass that will not read is named with the reason.
     fn show(&mut self, files: &[PathBuf], select: bool) {
+        if files.is_empty() {
+            return;
+        }
+        self.unreadable_files.clear();
         let mut arrived: Vec<(StoredPass, Vec<u8>)> = Vec::new();
         let mut again = None;
         for file in files {
@@ -386,6 +391,7 @@ impl AppModel {
         if files.is_empty() {
             return;
         }
+        self.unreadable_files.clear();
         let mut last = None;
         let mut outcomes = Vec::new();
         for file in files {
@@ -1333,6 +1339,40 @@ mod tests {
                 ]
                 .join(" ")
             )
+        );
+    }
+
+    /// A file that would not read is named until the next files are handed
+    /// over, not for the rest of the session.
+    #[test]
+    fn a_file_that_would_not_read_is_forgotten_at_the_next_handover() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app_with_wallet(dir.path());
+        let broken = dir.path().join("broken.pkpass");
+        std::fs::write(&broken, b"not a zip").unwrap();
+        app.show(std::slice::from_ref(&broken), true);
+        assert_eq!(app.unreadable_files.len(), 1);
+
+        // Nothing handed over: nothing to replace it with.
+        app.show(&[], true);
+        let _ = app.update(Message::Import(Vec::new()));
+        assert_eq!(app.unreadable_files.len(), 1);
+
+        let good = pass_file(dir.path(), "flight.pkpass", "A1", "1");
+        let _ = app.update(Message::Import(vec![good.clone()]));
+        assert!(
+            app.unreadable_files.is_empty(),
+            "{:?}",
+            app.unreadable_files
+        );
+
+        let _ = app.update(Message::Import(vec![broken]));
+        assert_eq!(app.unreadable_files.len(), 1);
+        app.show(std::slice::from_ref(&good), true);
+        assert!(
+            app.unreadable_files.is_empty(),
+            "{:?}",
+            app.unreadable_files
         );
     }
 

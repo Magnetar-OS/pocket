@@ -17,6 +17,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A pass opened from the file manager and then added by dropping the same
   file on the window, or choosing it in the dialog, is listed once. It stayed
   in the list twice: as the opened file, and as the pass in the wallet.
+- A file that could not be read is named until the next files are opened or
+  added. The line stayed above the list for as long as Pocket ran.
 
 ## [1.3.1] - 2026-10-03
 
