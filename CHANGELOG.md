@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Rebuilt against the current COSMIC libraries (libcosmic `a6ac45c`).
 - The "Add pass…" file dialog is titled "Add passes" and its button says
   "Add". The title was the header button's label, ellipsis included, and the
   button said "Open".
