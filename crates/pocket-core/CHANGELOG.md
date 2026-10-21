@@ -7,6 +7,11 @@ application keeps its own changelog at the repository root.
 
 ## [Unreleased]
 
+### Changed
+
+- The minimum supported Rust version is 1.99.1, raised from 1.99.0. The pinned
+  toolchain and `rust-version` move together.
+
 ## [1.1.1]
 
 ### Fixed
