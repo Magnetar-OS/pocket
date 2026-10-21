@@ -11,6 +11,12 @@ application keeps its own changelog at the repository root.
 
 - The minimum supported Rust version is 1.99.1, raised from 1.99.0. The pinned
   toolchain and `rust-version` move together.
+- **Breaking:** archives are read with zip 9, up from 8, and
+  `Error::Archive` carries zip 9's `ZipError`. Code that names that type
+  needs zip 9 as well. An entry name the reader cannot decode is now an
+  `Error::Archive` rather than a lossily decoded name.
+- `cosmic-pim-core` 3, up from 2, for the crash-safe writer. Nothing from it
+  is in this crate's API.
 
 ## [1.1.1]
 

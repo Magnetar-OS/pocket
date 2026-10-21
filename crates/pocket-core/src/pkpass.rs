@@ -206,7 +206,7 @@ fn read_all(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, Error> {
         if entry.is_dir() {
             continue;
         }
-        let name = entry.name().to_owned();
+        let name = entry.name()?.into_owned();
         let limit = MAX_ENTRY_BYTES.min(budget);
         if entry.size() > limit {
             return Err(too_large(&name, limit));

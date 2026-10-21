@@ -17,12 +17,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 sha1 = "0.11.0"
 # For `atomic`, the suite's crash-safe writer, which `PassStore::add` stores a
 # pass through. ARCHITECTURE.md rules out a second one here: a writer that is
 # right about temp files, fsync and the directory entry is written once.
-cosmic-pim-core = "2.0.0"
+cosmic-pim-core = "3.2.0"
 
 # The ZXing port, for the four symbologies PassKit defines. All four are
 # needed and no crate covers Aztec but this one, so a single well-worn
@@ -40,7 +40,7 @@ features = ["encoders", "encoding_rs", "aztec", "qrcode", "pdf417", "oned"]
 tempfile = "3"
 # The end-to-end test builds a `.pkpass` and hashes its manifest, so it needs
 # the same two the reader uses.
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 sha1 = "0.11.0"
 
 # The decoder, for tests only. A barcode test that asserts on module counts
