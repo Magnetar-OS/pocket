@@ -7,6 +7,8 @@ application keeps its own changelog at the repository root.
 
 ## [Unreleased]
 
+## [2.0.0]
+
 ### Changed
 
 - The minimum supported Rust version is 1.99.1, raised from 1.99.0. The pinned
