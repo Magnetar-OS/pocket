@@ -6,6 +6,18 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- An empty wallet shows one centred empty state across the window — what a
+  pass is, where Pocket keeps them, and an Add pass… button — instead of a
+  "0 passes" count, a paragraph, "No passes yet" and a detail pane asking to
+  select a pass that does not exist. The folder is on a line of its own, so
+  the sentence's full stop no longer wraps onto a line alone.
+- A sidebar category with nothing in it says "No passes of this kind", not
+  "No passes yet", when the wallet holds other passes.
+- "Select a pass" is centred in the detail pane, as Envelope and Circle
+  place their placeholders.
+
 ## [1.4.3] - 2026-11-01
 
 ### Changed

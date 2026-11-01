@@ -23,7 +23,11 @@ generic-passes = Other
 ## The list
 
 no-passes = No passes yet
-no-passes-detail = Passes arrive as .pkpass files — from an airline's confirmation email, an event booking, or a loyalty scheme. Add one with “Add pass…”, drop it on this window, or open it from your file manager. They are kept in { $path }.
+no-passes-detail = Passes arrive as .pkpass files — from an airline's confirmation email, an event booking, or a loyalty scheme. Add one with the button below, drop it on this window, or open it from your file manager.
+# Under the empty wallet's explanation, on a line of its own.
+passes-folder = Kept in { $path }
+# A sidebar category with nothing in it, while the wallet holds other kinds.
+no-passes-of-kind = No passes of this kind
 passes-count = { $count } { $count ->
         [one] pass
        *[other] passes

@@ -24,7 +24,7 @@
 use std::path::{Path, PathBuf};
 
 use cosmic::app::{Core, Task, context_drawer};
-use cosmic::iced::Length;
+use cosmic::iced::{Alignment, Length};
 use cosmic::prelude::*;
 use cosmic::widget::about::About;
 use cosmic::widget::{self, nav_bar};
@@ -169,7 +169,7 @@ impl AppModel {
         let visible = self.visible();
         let now = now();
         if visible.is_empty() {
-            return widget::text::body(fl!("no-passes")).into();
+            return widget::text::body(fl!("no-passes-of-kind")).into();
         }
 
         let mut column = widget::list_column();
@@ -207,9 +207,40 @@ impl AppModel {
             .collect()
     }
 
+    /// What an empty wallet shows in place of the list: what a pass is, where
+    /// one comes from, and the button that adds one.
+    fn empty_wallet(&self) -> Element<'_, Message> {
+        let spacing = cosmic::theme::spacing();
+        widget::column::with_capacity(4)
+            .spacing(spacing.space_s)
+            .align_x(Alignment::Center)
+            .push(widget::text::title3(fl!("no-passes")))
+            .push(
+                widget::text::body(fl!("no-passes-detail"))
+                    .align_x(Alignment::Center)
+                    .width(Length::Fill),
+            )
+            // On a line of its own: a path is one unbreakable word, and at
+            // the end of a sentence it pushed the full stop onto a line alone.
+            .push(widget::text::caption(fl!(
+                "passes-folder",
+                path = self.root.clone()
+            )))
+            .push(widget::button::suggested(fl!("add-pass")).on_press(Message::ChooseFiles))
+            .max_width(480)
+            .apply(widget::container)
+            .center(Length::Fill)
+            .into()
+    }
+
     fn detail(&self) -> Element<'_, Message> {
         let Some(pass) = self.selected_pass() else {
-            return widget::text::body(fl!("select-a-pass")).into();
+            // Centred, as Envelope and Circle place theirs: a placeholder in
+            // the corner reads as content that failed to load.
+            return widget::text::body(fl!("select-a-pass"))
+                .apply(widget::container)
+                .center(Length::Fill)
+                .into();
         };
         let spacing = cosmic::theme::spacing();
         let face = crate::face::view(pass, self.symbol.as_ref(), now());
@@ -871,22 +902,19 @@ impl cosmic::Application for AppModel {
             return crate::presenter::view(pass, symbol);
         }
 
-        let mut left = widget::column::with_capacity(5)
-            .spacing(spacing.space_xs)
-            .push(widget::text::caption(fl!(
+        let mut left = widget::column::with_capacity(5).spacing(spacing.space_xs);
+        // An empty wallet says so once, in the empty state below; "0 passes"
+        // above it would be the same sentence twice.
+        if !self.passes.is_empty() {
+            left = left.push(widget::text::caption(fl!(
                 "passes-count",
                 count = self.kept()
             )));
+        }
         if self.dragging {
             left = left.push(widget::text::body(fl!("drop-to-add")));
         } else if let Some(notice) = &self.notice {
             left = left.push(widget::text::body(notice.clone()));
-        }
-        if self.passes.is_empty() {
-            left = left.push(widget::text::body(fl!(
-                "no-passes-detail",
-                path = self.root.clone()
-            )));
         }
         let unreadable = self.unreadable.len() + self.unreadable_files.len();
         if unreadable > 0 {
@@ -898,18 +926,31 @@ impl cosmic::Application for AppModel {
                 left = left.push(widget::text::caption(line));
             }
         }
-        left = left.push(self.list());
+        left = left.push(if self.passes.is_empty() {
+            self.empty_wallet()
+        } else {
+            self.list()
+        });
 
-        let content = widget::row::with_capacity(3)
-            .spacing(spacing.space_s)
-            .padding(spacing.space_s)
-            .push(left.width(Length::FillPortion(2)))
-            .push(widget::divider::vertical::default())
-            .push(
-                widget::container(self.detail())
-                    .width(Length::FillPortion(3))
-                    .height(Length::Fill),
-            );
+        // With nothing to select, a detail pane could only say "Select a
+        // pass" about passes that do not exist; the empty state has the
+        // window to itself.
+        let content = if self.passes.is_empty() {
+            widget::row::with_capacity(1)
+                .padding(spacing.space_s)
+                .push(left.width(Length::Fill))
+        } else {
+            widget::row::with_capacity(3)
+                .spacing(spacing.space_s)
+                .padding(spacing.space_s)
+                .push(left.width(Length::FillPortion(2)))
+                .push(widget::divider::vertical::default())
+                .push(
+                    widget::container(self.detail())
+                        .width(Length::FillPortion(3))
+                        .height(Length::Fill),
+                )
+        };
         // The whole window takes a drop: a wallet has one thing to do with a
         // file, so there is no wrong place to let go of it. A sandboxed
         // application hands over a portal key rather than paths.
