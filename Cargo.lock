@@ -1041,9 +1041,9 @@ dependencies = [
 
 [[package]]
 name = "cosmic-pim-core"
-version = "4.1.1"
+version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da08b3592f06f4e860c626d2e4fca206c1b08694f030228463c27d3125323420"
+checksum = "0e2fb81fafea9d4d4dc1c4d32a0c78905763c06ae47e411ea64af42b7ac083ef"
 dependencies = [
  "base64 0.23.1",
  "calcard",
@@ -4239,7 +4239,7 @@ dependencies = [
 
 [[package]]
 name = "pocket-core"
-version = "2.0.2"
+version = "2.0.3"
 dependencies = [
  "chrono",
  "cosmic-pim-core",
