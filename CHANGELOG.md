@@ -6,6 +6,10 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Built against `pocket-core` 2.0.1, on cosmic-pim 4 (rusqlite 0.41).
+
 ## [1.4.2] - 2026-11-01
 
 ### Changed

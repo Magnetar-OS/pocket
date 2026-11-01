@@ -7,6 +7,13 @@ application keeps its own changelog at the repository root.
 
 ## [Unreleased]
 
+## [2.0.1]
+
+### Changed
+
+- `cosmic-pim-core` 4, up from 3, for the crash-safe writer, whose API did
+  not change. Nothing from it is in this crate's API.
+
 ## [2.0.0]
 
 ### Changed
