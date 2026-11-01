@@ -6,6 +6,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Built on cosmic-pim 4.1 and the latest releases of its other dependencies:
+  zip 9.2.1, open 5.4.5 and rust-embed 8.13.
+
 ## [1.4.5] - 2026-11-01
 
 ### Fixed
