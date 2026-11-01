@@ -6,6 +6,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- "No passes of this kind" is centred in the list, like the other empty
+  states, and a wallet that cannot be opened explains why away from the
+  window's edges.
+
 ## [1.4.4] - 2026-11-01
 
 ### Changed

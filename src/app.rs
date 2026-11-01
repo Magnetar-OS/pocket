@@ -169,7 +169,12 @@ impl AppModel {
         let visible = self.visible();
         let now = now();
         if visible.is_empty() {
-            return widget::text::body(fl!("no-passes-of-kind")).into();
+            // Centred in the list's space, like the empty wallet and the
+            // detail placeholder.
+            return widget::text::body(fl!("no-passes-of-kind"))
+                .apply(widget::container)
+                .center(Length::Fill)
+                .into();
         }
 
         let mut column = widget::list_column();
@@ -893,7 +898,11 @@ impl cosmic::Application for AppModel {
         let spacing = cosmic::theme::spacing();
 
         if let Some(why) = &self.fatal {
-            return widget::text::body(why.clone()).into();
+            return widget::text::body(why.clone())
+                .apply(widget::container)
+                .padding(spacing.space_m)
+                .center(Length::Fill)
+                .into();
         }
 
         if self.presenting
