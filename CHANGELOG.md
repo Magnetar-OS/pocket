@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Rebuilt against the current COSMIC libraries (libcosmic `95236a9`).
 - Built against `pocket-core` 2.0.0.
 
 ## [1.4.1] - 2026-10-21
