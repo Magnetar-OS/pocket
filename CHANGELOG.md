@@ -6,6 +6,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Built on cosmic-pim 4.1.1. pocket-core 2.0.2 is on crates.io with the raised
+  requirements: cosmic-pim-core 4.1.1 and zip 9.2.1.
+
 ## [1.4.6] - 2026-11-01
 
 ### Changed
