@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-11-01
+
 ### Changed
 
 - Built against `pocket-core` 2.0.1, on cosmic-pim 4 (rusqlite 0.41).
@@ -188,7 +190,8 @@ a pass on screen whose barcode a reader can scan.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 
-[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.3...HEAD
+[1.4.3]: https://github.com/Magnetar-OS/pocket/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/Magnetar-OS/pocket/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/Magnetar-OS/pocket/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/Magnetar-OS/pocket/compare/v1.3.1...v1.4.0
