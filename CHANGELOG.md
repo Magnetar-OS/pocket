@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.8] - 2026-11-01
+
 ### Changed
 
 - Built on cosmic-pim 4.1.2. pocket-core 2.0.3 is on crates.io requiring it.
@@ -230,7 +232,8 @@ a pass on screen whose barcode a reader can scan.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 
-[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.7...HEAD
+[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.8...HEAD
+[1.4.8]: https://github.com/Magnetar-OS/pocket/compare/v1.4.7...v1.4.8
 [1.4.7]: https://github.com/Magnetar-OS/pocket/compare/v1.4.6...v1.4.7
 [1.4.6]: https://github.com/Magnetar-OS/pocket/compare/v1.4.5...v1.4.6
 [1.4.5]: https://github.com/Magnetar-OS/pocket/compare/v1.4.4...v1.4.5
