@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-11-01
+
 ### Fixed
 
 - "No passes of this kind" is centred in the list, like the other empty
@@ -210,7 +212,8 @@ a pass on screen whose barcode a reader can scan.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 
-[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.4...HEAD
+[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.5...HEAD
+[1.4.5]: https://github.com/Magnetar-OS/pocket/compare/v1.4.4...v1.4.5
 [1.4.4]: https://github.com/Magnetar-OS/pocket/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/Magnetar-OS/pocket/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/Magnetar-OS/pocket/compare/v1.4.1...v1.4.2
