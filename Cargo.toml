@@ -34,7 +34,7 @@ publish = false
 xdgen = "0.1"
 
 [dependencies]
-pocket-core = { path = "crates/pocket-core", version = "2.0.3" }
+pocket-core = { path = "crates/pocket-core", version = "2.0.4" }
 
 i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester"] }
 i18n-embed-fl = "0.10"
@@ -48,15 +48,15 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 # The XDG portal, for inhibiting idle while a barcode is on screen. Already in
 # the graph through libcosmic's `xdg-portal` feature; naming it here is what
-# makes `ashpd::desktop::inhibit` reachable. The portal rather than a Wayland
-# protocol or a compositor bus name, because it is the one interface that also
-# works from inside a Flatpak.
-ashpd = "0.12.3"
+# makes `ashpd::desktop::inhibit` reachable, with its `inhibit` feature. The
+# portal rather than a Wayland protocol or a compositor bus name, because it is
+# the one interface that also works from inside a Flatpak.
+ashpd = { version = "0.13.13", features = ["inhibit"] }
 # For `com.system76.CosmicSettingsDaemon`, which owns the backlight on this
 # desktop. Also already in the graph via libcosmic. The proxy is three lines in
 # `src/screen.rs` rather than a dependency on the bindings crate, which does
 # not carry the `MaxDisplayBrightness` property the presenter needs.
-zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
+zbus = { version = "6", default-features = false, features = ["tokio"] }
 
 # `file://` URLs: how a `.pkpass` path crosses the session bus to the window
 # already running. The bus carries text only, and a file name is bytes. Already
@@ -85,7 +85,7 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 # To build a `.pkpass` for "Open with Pocket" to read, with a manifest the
 # reader accepts: the same two pocket-core's own tests use.
-zip = { version = "9.2.1", default-features = false, features = ["deflate"] }
+zip = { version = "9.4.1", default-features = false, features = ["deflate"] }
 sha1 = "0.11.0"
 
 [[bin]]

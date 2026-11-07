@@ -29,7 +29,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use ashpd::desktop::Request;
-use ashpd::desktop::inhibit::{InhibitFlags, InhibitProxy};
+use ashpd::desktop::inhibit::{InhibitFlags, InhibitOptions, InhibitProxy};
 
 #[zbus::proxy(
     interface = "com.system76.CosmicSettingsDaemon",
@@ -117,12 +117,8 @@ pub async fn release(hold: Hold) {
 /// not ask for and cannot connect to anything they did.
 pub fn restore_blocking(brightness: i32) {
     // On its own thread: the caller is inside the toolkit's async runtime,
-    // and the blocking bus API refuses to be driven from there.
-    let restored = std::thread::spawn(move || -> zbus::Result<()> {
-        let connection = zbus::blocking::Connection::session()?;
-        CosmicSettingsDaemonProxyBlocking::new(&connection)?.set_display_brightness(brightness)
-    })
-    .join();
+    // and `block_on` refuses to be driven from there.
+    let restored = std::thread::spawn(move || zbus::block_on(set_brightness(brightness))).join();
 
     match restored {
         Ok(Ok(())) => {}
@@ -143,7 +139,11 @@ async fn inhibit_idle(reason: &str) -> Option<Request<()>> {
     // No window identifier: the portal accepts an empty parent, and obtaining
     // a real one means exporting the surface through xdg-foreign for a
     // request that shows no dialogue.
-    match proxy.inhibit(None, InhibitFlags::Idle.into(), reason).await {
+    let options = InhibitOptions::default().set_reason(reason);
+    match proxy
+        .inhibit(None, InhibitFlags::Idle.into(), options)
+        .await
+    {
         Ok(request) => Some(request),
         Err(why) => {
             tracing::warn!(%why, "the idle inhibition was refused");

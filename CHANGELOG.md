@@ -6,6 +6,11 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Built on zbus 6 and ashpd 0.13, as libcosmic now is, and on cosmic-pim 5 and
+  zip 9.4.1. pocket-core 2.0.4 is on crates.io with those requirements.
+
 ## [1.4.8] - 2026-11-01
 
 ### Changed
