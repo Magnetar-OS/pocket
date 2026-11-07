@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.10] - 2026-11-07
+
 ### Changed
 
 - Built on ashpd 0.14, which runs on zbus 6 like the rest of the app.
@@ -244,7 +246,8 @@ a pass on screen whose barcode a reader can scan.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 
-[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.9...HEAD
+[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.10...HEAD
+[1.4.10]: https://github.com/Magnetar-OS/pocket/compare/v1.4.9...v1.4.10
 [1.4.9]: https://github.com/Magnetar-OS/pocket/compare/v1.4.8...v1.4.9
 [1.4.8]: https://github.com/Magnetar-OS/pocket/compare/v1.4.7...v1.4.8
 [1.4.7]: https://github.com/Magnetar-OS/pocket/compare/v1.4.6...v1.4.7
