@@ -46,12 +46,13 @@ open = "5.4.5"
 # time, and the clock is read through `SystemTime`, so no `clock` feature.
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 
-# The XDG portal, for inhibiting idle while a barcode is on screen. Already in
-# the graph through libcosmic's `xdg-portal` feature; naming it here is what
-# makes `ashpd::desktop::inhibit` reachable, with its `inhibit` feature. The
-# portal rather than a Wayland protocol or a compositor bus name, because it is
-# the one interface that also works from inside a Flatpak.
-ashpd = { version = "0.13.13", features = ["inhibit"] }
+# The XDG portal, for inhibiting idle while a barcode is on screen. Used only
+# for this app's own portal call, never handed to or from libcosmic, so it is
+# on 0.14 (zbus 6, like the app); libcosmic's 0.13 copy is linked separately
+# until libcosmic moves. The portal rather than a Wayland protocol or a
+# compositor bus name, because it is the one interface that also works from
+# inside a Flatpak.
+ashpd = { version = "0.14.0", features = ["inhibit"] }
 # For `com.system76.CosmicSettingsDaemon`, which owns the backlight on this
 # desktop. Also already in the graph via libcosmic. The proxy is three lines in
 # `src/screen.rs` rather than a dependency on the bindings crate, which does

@@ -140,10 +140,7 @@ async fn inhibit_idle(reason: &str) -> Option<Request<()>> {
     // a real one means exporting the surface through xdg-foreign for a
     // request that shows no dialogue.
     let options = InhibitOptions::default().set_reason(reason);
-    match proxy
-        .inhibit(None, InhibitFlags::Idle.into(), options)
-        .await
-    {
+    match proxy.inhibit(None, InhibitFlags::IDLE, options).await {
         Ok(request) => Some(request),
         Err(why) => {
             tracing::warn!(%why, "the idle inhibition was refused");
