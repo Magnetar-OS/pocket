@@ -4176,7 +4176,7 @@ dependencies = [
 
 [[package]]
 name = "pocket"
-version = "1.4.8"
+version = "1.4.9"
 dependencies = [
  "ashpd",
  "chrono",
