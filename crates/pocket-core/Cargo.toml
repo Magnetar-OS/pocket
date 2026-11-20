@@ -1,13 +1,13 @@
 [package]
 name = "pocket-core"
-version = "2.0.4"
+version = "2.0.5"
 edition = "2024"
 # MPL-2.0, not GPL: this crate is shaped to graduate into the cosmic-pim
 # substrate. See the note in the workspace manifest and LICENSING.md.
 license = "MPL-2.0"
 description = "The pass model, the PKPass reader, and the pass store"
 repository = "https://github.com/Magnetar-OS/pocket"
-rust-version = "1.99.1"
+rust-version = "1.100.0"
 readme = "README.md"
 keywords = ["pkpass", "passkit", "wallet", "barcode", "cosmic"]
 categories = ["parser-implementations", "encoding"]
@@ -17,12 +17,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
-zip = { version = "9.4.1", default-features = false, features = ["deflate"] }
+zip = { version = "9.8.1", default-features = false, features = ["deflate"] }
 sha1 = "0.11.0"
 # For `atomic`, the suite's crash-safe writer, which `PassStore::add` stores a
 # pass through. ARCHITECTURE.md rules out a second one here: a writer that is
 # right about temp files, fsync and the directory entry is written once.
-cosmic-pim-core = "5.0.0"
+cosmic-pim-core = "6.0.0"
 
 # The ZXing port, for the four symbologies PassKit defines. All four are
 # needed and no crate covers Aztec but this one, so a single well-worn
@@ -32,7 +32,7 @@ cosmic-pim-core = "5.0.0"
 # optional — the crate refuses to build without a character-set backend, and
 # a character set is the whole point of `messageEncoding`.
 [dependencies.rxing]
-version = "0.9.3"
+version = "0.9.4"
 default-features = false
 features = ["encoders", "encoding_rs", "aztec", "qrcode", "pdf417", "oned"]
 
@@ -40,7 +40,7 @@ features = ["encoders", "encoding_rs", "aztec", "qrcode", "pdf417", "oned"]
 tempfile = "3"
 # The end-to-end test builds a `.pkpass` and hashes its manifest, so it needs
 # the same two the reader uses.
-zip = { version = "9.4.1", default-features = false, features = ["deflate"] }
+zip = { version = "9.8.1", default-features = false, features = ["deflate"] }
 sha1 = "0.11.0"
 
 # The decoder, for tests only. A barcode test that asserts on module counts
@@ -48,7 +48,7 @@ sha1 = "0.11.0"
 # compares the string is the same check the gate performs. It is a
 # dev-dependency so the shipped binary carries no scanner.
 [dev-dependencies.rxing]
-version = "0.9.3"
+version = "0.9.4"
 default-features = false
 features = ["decoders", "encoders", "encoding_rs", "aztec", "qrcode", "pdf417", "oned"]
 
