@@ -8,6 +8,7 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Rebuilt against the current COSMIC libraries (libcosmic `be7937d`).
 - Built with Rust 1.100.0, now the minimum supported version (was 1.99.1).
 - Built on cosmic-pim 6, zip 9.8, rxing 0.9.4 and ashpd 0.14.1;
   pocket-core 2.0.5 carries the library moves.
