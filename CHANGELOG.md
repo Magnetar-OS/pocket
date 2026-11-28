@@ -6,6 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.12] - 2026-11-28
+
 ### Changed
 
 - Rebuilt against the current COSMIC libraries (libcosmic `009fb9d`).
@@ -262,7 +264,8 @@ a pass on screen whose barcode a reader can scan.
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
 
-[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.11...HEAD
+[Unreleased]: https://github.com/Magnetar-OS/pocket/compare/v1.4.12...HEAD
+[1.4.12]: https://github.com/Magnetar-OS/pocket/compare/v1.4.11...v1.4.12
 [1.4.11]: https://github.com/Magnetar-OS/pocket/compare/v1.4.10...v1.4.11
 [1.4.10]: https://github.com/Magnetar-OS/pocket/compare/v1.4.9...v1.4.10
 [1.4.9]: https://github.com/Magnetar-OS/pocket/compare/v1.4.8...v1.4.9
