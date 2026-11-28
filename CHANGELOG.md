@@ -6,6 +6,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Built with Rust 1.100.1, now the minimum supported version (was 1.100.0).
+- Built on cosmic-pim 7, zip 9.9 and ashpd 0.14.3; pocket-core 2.0.6
+  carries the library moves.
+
 ## [1.4.11] - 2026-11-20
 
 ### Changed

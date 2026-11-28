@@ -7,6 +7,14 @@ application keeps its own changelog at the repository root.
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-11-28
+
+### Changed
+
+- `cosmic-pim-core` 7, up from 6; nothing from it is in this crate's API.
+- zip 9.9.0.
+- The minimum supported Rust version is 1.100.1, raised from 1.100.0.
+
 ## [2.0.5] - 2026-11-21
 
 ### Changed
